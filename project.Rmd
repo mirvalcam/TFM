@@ -27,6 +27,14 @@ annotation(microarray.raw.data) #esto nos da el tipo de array
 ```
 
 
+```{r}
+#BiocManager::install("clariomsmousetranscriptcluster.db")
+#BiocManager::install("AnnotationDbi")
+library(clariomsmousetranscriptcluster.db)
+library(AnnotationDbi)
+
+```
+
 
 *Control de calidad*
 
@@ -166,11 +174,6 @@ dim(experimental.design)
 
 linear.fit <- lmFit(expression.level, experimental.design)
 
-
-
-linear.fit
-linear.fit$coefficients
-head(expression.level)
 contrast.matrix <- makeContrasts(
   ko_6m - wt_6m,
   ko_24m - ko_6m,
@@ -184,51 +187,53 @@ contrast.matrix <- makeContrasts(
 dim(linear.fit$coefficients)
 dim(contrast.matrix)
 
-
-
 contrast.linear.fit <- contrasts.fit(linear.fit, contrast.matrix)
 contrast.results <- eBayes(contrast.linear.fit)
 
 ```
-
-
-Como nosotros tenemos las etiquetas de los genes en el formato de la casa comercial y el microarray, obtenemos la asociación a continuación:
-
-```{r}
-
-chip_annot <- read.delim("Clariom_S_Mouse.r1_MSigDB.v7.0_REMAPPED_PATCH.chip", stringsAsFactors = FALSE)
-colnames(chip_annot)[1:2] <- c("ProbeID", "GeneSymbol")
-head(chip_annot)
-
-
-```
-
-
 *KO 6m vs WT 6m*
 
 ```{r}
+
+# 1. Extraer tabla y logFC
 ko_6m_vs_wt_6m <- topTable(contrast.results, number = 29129, coef = 1, sort.by = "logFC")
 fold.change.ko_6m_vs_wt_6m <- ko_6m_vs_wt_6m$logFC
-genes.ids.ko_6m_vs_wt_6m <- rownames(ko_6m_vs_wt_6m)
+genes.ids.ko_6m_vs_wt_6m <- rownames(ko_6m_vs_wt_6m)  # Transcript cluster IDs
 
-activated.genes.ko_6m_vs_wt_6m <- genes.ids.ko_6m_vs_wt_6m[fold.change.ko_6m_vs_wt_6m > 0.5]
-repressed.genes.ko_6m_vs_wt_6m <- genes.ids.ko_6m_vs_wt_6m[fold.change.ko_6m_vs_wt_6m < -0.5]
+# 2. Filtrar genes activados y reprimidos
+activated_ids_ko_6m_wt_6m <- genes.ids.ko_6m_vs_wt_6m[fold.change.ko_6m_vs_wt_6m > 0.5]
+repressed_ids_ko_6m_wt_6m <- genes.ids.ko_6m_vs_wt_6m[fold.change.ko_6m_vs_wt_6m < -0.5]
 
-length(na.omit(activated.genes.ko_6m_vs_wt_6m))
+"TC1400000513.mm.2" %in% activated_ids_ko_6m_wt_6m
+"TC1400000513.mm.2" %in% repressed_ids_ko_6m_wt_6m
 
-"TC1400000513.mm.2" %in% activated.genes.ko_6m_vs_wt_6m
-"TC1400000513.mm.2" %in% repressed.genes.ko_6m_vs_wt_6m
+# 3. Mapear PROBEID → ENTREZID usando el paquete oficial
+library(clariomsmousetranscriptcluster.db)
+library(AnnotationDbi)
+library(dplyr)
 
-activated_ids_ko_6m_wt_6m <- activated.genes.ko_6m_vs_wt_6m
-activated_map_ko_6m_wt_6m <- chip_annot[chip_annot$ProbeID %in% activated_ids_ko_6m_wt_6m, ]
-activated_map_ko_6m_wt_6m <- activated_map_ko_6m_wt_6m[match(activated_ids_ko_6m_wt_6m, activated_map_ko_6m_wt_6m$ProbeID), ]
+# Obtener todos los mapeos posibles
+mapped <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                keys = activated_ids_ko_6m_wt_6m,
+                                columns = "ENTREZID",
+                                keytype = "PROBEID")
 
-activated_symbols_ko_6m_wt_6m <- na.omit(unique(activated_map_ko_6m_wt_6m$GeneSymbol))
+# Filtrar duplicados y NAs
+mapped_unique <- mapped %>%
+  filter(!is.na(ENTREZID)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+# Obtener ENTREZIDs únicos
+entrez_ids_activated <- unique(mapped_unique$ENTREZID)
+
+# 4. enrichGO con ENTREZID únicos
+library(clusterProfiler)
+library(org.Mm.eg.db)
 
 ego_ko_6m_vs_wt_6m <- enrichGO(
-  gene         = activated_symbols_ko_6m_wt_6m,
+  gene         = entrez_ids_activated,
   OrgDb        = org.Mm.eg.db,
-  keyType      = "SYMBOL",
+  keyType      = "ENTREZID",
   ont          = "BP",
   pAdjustMethod= "BH",
   pvalueCutoff = 0.05,
@@ -236,33 +241,55 @@ ego_ko_6m_vs_wt_6m <- enrichGO(
   readable     = TRUE
 )
 
-barplot(ego_ko_6m_vs_wt_6m, showCategory = 10)
+# 5. Visualización
+barplot(ego_ko_6m_vs_wt_6m, showCategory = 20)
+
 
 ```
+
 
 *WT 24m vs KO 24m*
 
 ```{r}
+
+# 1. Obtener tabla de resultados
 ko_24m_vs_wt_24m <- topTable(contrast.results, number = 29129, coef = 4, sort.by = "logFC")
 fold.change.ko_24m_vs_wt_24m <- ko_24m_vs_wt_24m$logFC
-genes.ids.ko_24m_vs_wt_24m <- rownames(ko_24m_vs_wt_24m)
+genes.ids.ko_24m_vs_wt_24m <- rownames(ko_24m_vs_wt_24m)  # Transcript Cluster IDs
 
-activated.genes.ko_24m_vs_wt_24m <- genes.ids.ko_24m_vs_wt_24m[fold.change.ko_24m_vs_wt_24m > 0.5]
-repressed.genes.ko_24m_vs_wt_24m <- genes.ids.ko_24m_vs_wt_24m[fold.change.ko_24m_vs_wt_24m < -0.5]
+# 2. Filtrar genes activados y reprimidos
+activated_ids_ko_24m_wt_24m <- genes.ids.ko_24m_vs_wt_24m[fold.change.ko_24m_vs_wt_24m > 0.5]
+repressed_ids_ko_24m_wt_24m <- genes.ids.ko_24m_vs_wt_24m[fold.change.ko_24m_vs_wt_24m < -0.5]
+"TC1400000513.mm.2" %in% activated_ids_ko_24m_wt_24m
+"TC1400000513.mm.2" %in% repressed_ids_ko_24m_wt_24m
 
-"TC1400000513.mm.2" %in% activated.genes.ko_24m_vs_wt_24m
-"TC1400000513.mm.2" %in% repressed.genes.ko_24m_vs_wt_24m
 
-activated_ids_ko_24m_wt_24m <- activated.genes.ko_24m_vs_wt_24m
-activated_map_ko_24m_wt_24m <- chip_annot[chip_annot$ProbeID %in% activated_ids_ko_24m_wt_24m, ]
-activated_map_ko_24m_wt_24m <- activated_map_ko_24m_wt_24m[match(activated_ids_ko_24m_wt_24m, activated_map_ko_24m_wt_24m$ProbeID), ]
+# 3. Cargar paquetes de anotación y enriquicimiento
+library(clariomsmousetranscriptcluster.db)
+library(AnnotationDbi)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(dplyr)
 
-activated_symbols_ko_24m_wt_24m <- na.omit(unique(activated_map_ko_24m_wt_24m$GeneSymbol))
+# 4. Mapear Transcript Cluster IDs → ENTREZID
+mapped_24m <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                    keys = activated_ids_ko_24m_wt_24m,
+                                    columns = "ENTREZID",
+                                    keytype = "PROBEID")
 
+# 5. Filtrar duplicados y NAs
+mapped_unique_24m <- mapped_24m %>%
+  filter(!is.na(ENTREZID)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+# 6. Extraer ENTREZ IDs únicos
+entrez_ids_activated_24m <- unique(mapped_unique_24m$ENTREZID)
+"Lgals3" %in% entrez_ids_activated_24m
+# 7. enrichGO con ENTREZIDs (ratón)
 ego_ko_24m_vs_wt_24m <- enrichGO(
-  gene         = activated_symbols_ko_24m_wt_24m,
+  gene         = entrez_ids_activated_24m,
   OrgDb        = org.Mm.eg.db,
-  keyType      = "SYMBOL",
+  keyType      = "ENTREZID",
   ont          = "BP",
   pAdjustMethod= "BH",
   pvalueCutoff = 0.05,
@@ -270,33 +297,52 @@ ego_ko_24m_vs_wt_24m <- enrichGO(
   readable     = TRUE
 )
 
+# 8. Visualización
 barplot(ego_ko_24m_vs_wt_24m, showCategory = 10)
+
 
 ```
 
 *KO 24m vs KO 6m*
 
 ```{r}
+
+# 1. Obtener resultados del contraste 24m vs 6m (solo KO)
 ko_24m_vs_ko_6m <- topTable(contrast.results, number = 29129, coef = 2, sort.by = "logFC")
 fold.change.ko_24m_vs_ko_6m <- ko_24m_vs_ko_6m$logFC
-genes.ids.ko_24m_vs_ko_6m <- rownames(ko_24m_vs_ko_6m)
+genes.ids.ko_24m_vs_ko_6m <- rownames(ko_24m_vs_ko_6m)  # Transcript Cluster IDs
 
-activated.genes.ko_24m_vs_ko_6m <- genes.ids.ko_24m_vs_ko_6m[fold.change.ko_24m_vs_ko_6m > 0.5]
-repressed.genes.ko_24m_vs_ko_6m <- genes.ids.ko_24m_vs_ko_6m[fold.change.ko_24m_vs_ko_6m < -0.5]
+# 2. Filtrar genes activados y reprimidos
+activated_ids_ko_24m_ko_6m <- genes.ids.ko_24m_vs_ko_6m[fold.change.ko_24m_vs_ko_6m > 0.5]
+repressed_ids_ko_24m_ko_6m <- genes.ids.ko_24m_vs_ko_6m[fold.change.ko_24m_vs_ko_6m < -0.5]
+"TC1400000513.mm.2" %in% activated_ids_ko_24m_ko_6m
+"TC1400000513.mm.2" %in% repressed_ids_ko_24m_ko_6m
+# 3. Cargar paquetes
+library(clariomsmousetranscriptcluster.db)
+library(AnnotationDbi)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(dplyr)
 
-"TC1400000513.mm.2" %in% activated.genes.ko_24m_vs_ko_6m
-"TC1400000513.mm.2" %in% repressed.genes.ko_24m_vs_ko_6m
+# 4. Mapear PROBEID (Transcript Cluster ID) → ENTREZID
+mapped_ko_24m_ko_6m <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                             keys = activated_ids_ko_24m_ko_6m,
+                                             columns = "ENTREZID",
+                                             keytype = "PROBEID")
 
-activated_ids_ko_24m_ko_6m <- activated.genes.ko_24m_vs_ko_6m
-activated_map_ko_24m_ko_6m <- chip_annot[chip_annot$ProbeID %in% activated_ids_ko_24m_ko_6m, ]
-activated_map_ko_24m_ko_6m <- activated_map_ko_24m_ko_6m[match(activated_ids_ko_24m_ko_6m, activated_map_ko_24m_ko_6m$ProbeID), ]
+# 5. Limpiar: eliminar NAs y duplicados
+mapped_unique_ko_24m_ko_6m <- mapped_ko_24m_ko_6m %>%
+  filter(!is.na(ENTREZID)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
 
-activated_symbols_ko_24m_ko_6m <- na.omit(unique(activated_map_ko_24m_ko_6m$GeneSymbol))
+# 6. Extraer ENTREZ IDs únicos
+entrez_ids_activated_ko_24m_ko_6m <- unique(mapped_unique_ko_24m_ko_6m$ENTREZID)
 
+# 7. enrichGO con ENTREZID
 ego_ko_24m_vs_ko_6m <- enrichGO(
-  gene         = activated_symbols_ko_24m_ko_6m,
+  gene         = entrez_ids_activated_ko_24m_ko_6m,
   OrgDb        = org.Mm.eg.db,
-  keyType      = "SYMBOL",
+  keyType      = "ENTREZID",
   ont          = "BP",
   pAdjustMethod= "BH",
   pvalueCutoff = 0.05,
@@ -304,6 +350,7 @@ ego_ko_24m_vs_ko_6m <- enrichGO(
   readable     = TRUE
 )
 
+# 8. Visualización
 barplot(ego_ko_24m_vs_ko_6m, showCategory = 10)
 
 
@@ -313,26 +360,43 @@ barplot(ego_ko_24m_vs_ko_6m, showCategory = 10)
 *WT 24m vs WT 6m*
 
 ```{r}
+
+# 1. Obtener tabla de resultados del contraste WT 24m vs WT 6m
 wt_24m_vs_wt_6m <- topTable(contrast.results, number = 29129, coef = 3, sort.by = "logFC")
 fold.change.wt_24m_vs_wt_6m <- wt_24m_vs_wt_6m$logFC
-genes.ids.wt_24m_vs_wt_6m <- rownames(wt_24m_vs_wt_6m)
+genes.ids.wt_24m_vs_wt_6m <- rownames(wt_24m_vs_wt_6m)  # Transcript Cluster IDs
 
-activated.genes.wt_24m_vs_wt_6m <- genes.ids.wt_24m_vs_wt_6m[fold.change.wt_24m_vs_wt_6m > 0.5]
-repressed.genes.wt_24m_vs_wt_6m <- genes.ids.wt_24m_vs_wt_6m[fold.change.wt_24m_vs_wt_6m < -0.5]
+# 2. Filtrar genes activados y reprimidos
+activated_ids_wt_24m_vs_wt_6m <- genes.ids.wt_24m_vs_wt_6m[fold.change.wt_24m_vs_wt_6m > 0.5]
+repressed_ids_wt_24m_vs_wt_6m <- genes.ids.wt_24m_vs_wt_6m[fold.change.wt_24m_vs_wt_6m < -0.5]
 
-"TC1400000513.mm.2" %in% activated.genes.wt_24m_vs_wt_6m
-"TC1400000513.mm.2" %in% repressed.genes.wt_24m_vs_wt_6m
+"TC1400000513.mm.2" %in% activated_ids_wt_24m_vs_wt_6m
+"TC1400000513.mm.2" %in% repressed_ids_wt_24m_vs_wt_6m
+# 3. Cargar paquetes
+library(clariomsmousetranscriptcluster.db)
+library(AnnotationDbi)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(dplyr)
 
-activated_ids_wt_24m_vs_wt_6m <- activated.genes.wt_24m_vs_wt_6m
-activated_map_wt_24m_vs_wt_6m <- chip_annot[chip_annot$ProbeID %in% activated_ids_wt_24m_vs_wt_6m, ]
-activated_map_wt_24m_vs_wt_6m <- activated_map_wt_24m_vs_wt_6m[match(activated_ids_wt_24m_vs_wt_6m, activated_map_wt_24m_vs_wt_6m$ProbeID), ]
+# 4. Mapear IDs del array → ENTREZID
+mapped_wt_24m_vs_wt_6m <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                                keys = activated_ids_wt_24m_vs_wt_6m,
+                                                columns = "ENTREZID",
+                                                keytype = "PROBEID")
 
-activated_symbols_wt_24m_vs_wt_6m <- na.omit(unique(activated_map_wt_24m_vs_wt_6m$GeneSymbol))
+# 5. Limpiar: eliminar NAs y duplicados
+mapped_unique_wt_24m_vs_wt_6m <- mapped_wt_24m_vs_wt_6m %>%
+  filter(!is.na(ENTREZID)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
 
+# 6. Obtener ENTREZ IDs únicos
+entrez_ids_wt_24m_vs_wt_6m <- unique(mapped_unique_wt_24m_vs_wt_6m$ENTREZID)
+# 7. enrichGO
 ego_wt_24m_vs_wt_6m <- enrichGO(
-  gene         = activated_symbols_wt_24m_vs_wt_6m,
+  gene         = entrez_ids_wt_24m_vs_wt_6m,
   OrgDb        = org.Mm.eg.db,
-  keyType      = "SYMBOL",
+  keyType      = "ENTREZID",
   ont          = "BP",
   pAdjustMethod= "BH",
   pvalueCutoff = 0.05,
@@ -340,13 +404,33 @@ ego_wt_24m_vs_wt_6m <- enrichGO(
   readable     = TRUE
 )
 
+# 8. Visualización
 barplot(ego_wt_24m_vs_wt_6m, showCategory = 10)
+
 
 
 ```
 
 
 
+
+Esto me da la traducción de como se llama la galectina 3 en mi entrezid.
+```{r}
+AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                      keys = "TC1400000513.mm.2",
+                      columns = "SYMBOL",
+                      keytype = "PROBEID")
+```
+
+
+```{r}
+symbol_to_probes <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                          keys = "Lgals3",
+                                          columns = c("PROBEID", "ENTREZID"),
+                                          keytype = "SYMBOL")
+symbol_to_probes
+
+```
 
 
 
