@@ -303,6 +303,41 @@ barplot(ego_ko_24m_vs_wt_24m, showCategory = 10)
 
 ```
 
+
+
+```{r}
+
+# 4. Mapear Transcript Cluster IDs → ENTREZID
+mapped_24m <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                    keys = repressed_ids_ko_24m_wt_24m,
+                                    columns = "ENTREZID",
+                                    keytype = "PROBEID")
+
+# 5. Filtrar duplicados y NAs
+mapped_unique_24m <- mapped_24m %>%
+  filter(!is.na(ENTREZID)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+# 6. Extraer ENTREZ IDs únicos
+entrez_ids_repressed_24m <- unique(mapped_unique_24m$ENTREZID)
+"Lgals3" %in% entrez_ids_activated_24m
+# 7. enrichGO con ENTREZIDs (ratón)
+ego_ko_24m_vs_wt_24m_repressed <- enrichGO(
+  gene         = entrez_ids_repressed_24m,
+  OrgDb        = org.Mm.eg.db,
+  keyType      = "ENTREZID",
+  ont          = "BP",
+  pAdjustMethod= "BH",
+  pvalueCutoff = 0.05,
+  qvalueCutoff = 0.1,
+  readable     = TRUE
+)
+
+# 8. Visualización
+barplot(ego_ko_24m_vs_wt_24m_repressed, showCategory = 10)
+
+```
+
 *KO 24m vs KO 6m*
 
 ```{r}
@@ -411,7 +446,37 @@ barplot(ego_wt_24m_vs_wt_6m, showCategory = 10)
 
 ```
 
+```{r}
+# 4. Mapear IDs del array → ENTREZID
+mapped_wt_24m_vs_wt_6m <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                                keys = repressed_ids_wt_24m_vs_wt_6m,
+                                                columns = "ENTREZID",
+                                                keytype = "PROBEID")
 
+# 5. Limpiar: eliminar NAs y duplicados
+mapped_unique_wt_24m_vs_wt_6m_repressed <- mapped_wt_24m_vs_wt_6m %>%
+  filter(!is.na(ENTREZID)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+# 6. Obtener ENTREZ IDs únicos
+entrez_ids_wt_24m_vs_wt_6m <- unique(mapped_unique_wt_24m_vs_wt_6m_repressed$ENTREZID)
+# 7. enrichGO
+ego_wt_24m_vs_wt_6m <- enrichGO(
+  gene         = entrez_ids_wt_24m_vs_wt_6m,
+  OrgDb        = org.Mm.eg.db,
+  keyType      = "ENTREZID",
+  ont          = "BP",
+  pAdjustMethod= "BH",
+  pvalueCutoff = 0.05,
+  qvalueCutoff = 0.1,
+  readable     = TRUE
+)
+
+# 8. Visualización
+barplot(ego_wt_24m_vs_wt_6m, showCategory = 10)
+
+
+```
 
 
 Esto me da la traducción de como se llama la galectina 3 en mi entrezid.
@@ -431,6 +496,7 @@ symbol_to_probes <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
 symbol_to_probes
 
 ```
+
 
 
 
