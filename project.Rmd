@@ -5,9 +5,9 @@ date: "2025-03-30"
 output: html_document
 ---
 
-
 Cargamos los paquetes:
-```{r}
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
 library(oligo)
 
 ko_mouses_6m <- list.files(path = "6m/CEL/ko", pattern = "[Cc][Ee][Ll]$", full.names = TRUE)
@@ -26,15 +26,13 @@ annotation(microarray.raw.data) #esto nos da el tipo de array
 
 ```
 
-
-```{r}
+```{r include=FALSE}
 #BiocManager::install("clariomsmousetranscriptcluster.db")
 #BiocManager::install("AnnotationDbi")
 library(clariomsmousetranscriptcluster.db)
 library(AnnotationDbi)
 
 ```
-
 
 *Control de calidad*
 
@@ -44,12 +42,13 @@ library(AnnotationDbi)
 image(microarray.raw.data[,1],col=rainbow(100))
 image(microarray.raw.data[,2],col=rainbow(100))
 
+# visualización de boxplot e histograma
 boxplot(microarray.raw.data, col = rainbow(length(sampleNames(microarray.raw.data))), las=2, ylab="Fluorescence (R.U.)")
 hist(as.vector(exprs(microarray.raw.data)), breaks=100, col="grey", main="Histograma de intensidades")
 
 ```
 
-```{r}
+```{r warning=FALSE, include=FALSE}
 library(arrayQualityMetrics)
 arrayQualityMetrics(expressionset = microarray.raw.data,
                     outdir = "QC_Report_Crudos",
@@ -58,10 +57,7 @@ arrayQualityMetrics(expressionset = microarray.raw.data,
 
 ```
 
-
-AQUI TENGO QUE METER LOS REPORTES.
-
-
+![Visualizacion](QC_Report_Crudos/msd.png)
 
 Ahora sí, vamos a preprocesar los datos:
 
@@ -103,7 +99,6 @@ text(x = 4, y = 12,
 
 ```
 
-
 ANÁLISIS DE COMPONENTES PRINCIPALES
 
 ```{r}
@@ -132,7 +127,6 @@ fviz_dend(res.hcpc,
 )
 
 ```
-
 
 Colapsamos las réplicas en un único vector.
 
@@ -191,7 +185,64 @@ contrast.linear.fit <- contrasts.fit(linear.fit, contrast.matrix)
 contrast.results <- eBayes(contrast.linear.fit)
 
 ```
+
+Aquí creamos el universo que utilizaremos para hacer los enriquecimientos funcionales.
+
+```{r}
+# Esto asume que rownames(expression.level) tiene los IDs tipo "TCxxxxx"
+universe_ids <- rownames(expression.level)
+universe_mapped <- AnnotationDbi::select(
+  clariomsmousetranscriptcluster.db,
+  keys = universe_ids,
+  columns = "ENTREZID",
+  keytype = "PROBEID"
+)
+
+# Limpiar duplicados y NAs
+universe_clean <- universe_mapped %>%
+  filter(!is.na(ENTREZID)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+# Extraer solo los ENTREZID
+universe_entrez <- unique(universe_clean$ENTREZID)
+
+```
+
 *KO 6m vs WT 6m*
+
+Volcano:
+
+```{r}
+# 1. Obtener tabla completa del contraste
+ko_6m_vs_wt_6m <- topTable(contrast.results, number = Inf, coef = 1, sort.by = "none")
+
+# 2. Calcular -log10(p-value)
+ko_6m_vs_wt_6m$negLogP <- -log10(ko_6m_vs_wt_6m$P.Value)
+
+# 3. Clasificar genes según significancia
+ko_6m_vs_wt_6m$Significance <- "NS"
+ko_6m_vs_wt_6m$Significance[ko_6m_vs_wt_6m$logFC > 1.5 & ko_6m_vs_wt_6m$P.Value < 0.05] <- "Up"
+ko_6m_vs_wt_6m$Significance[ko_6m_vs_wt_6m$logFC < -1.5 & ko_6m_vs_wt_6m$P.Value < 0.05] <- "Down"
+
+# 4. Graficar volcano plot
+library(ggplot2)
+
+ggplot(ko_6m_vs_wt_6m, aes(x = logFC, y = negLogP, color = Significance)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  scale_color_manual(values = c("Up" = "red", "Down" = "blue", "NS" = "gray")) +
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed", color = "black") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Volcano Plot: KO 6m vs WT 6m",
+    x = "log2 Fold Change",
+    y = "-log10(p-value)",
+    color = "Regulación"
+  )
+
+```
+
+Enriquecimiento
 
 ```{r}
 
@@ -201,8 +252,8 @@ fold.change.ko_6m_vs_wt_6m <- ko_6m_vs_wt_6m$logFC
 genes.ids.ko_6m_vs_wt_6m <- rownames(ko_6m_vs_wt_6m)  # Transcript cluster IDs
 
 # 2. Filtrar genes activados y reprimidos
-activated_ids_ko_6m_wt_6m <- genes.ids.ko_6m_vs_wt_6m[fold.change.ko_6m_vs_wt_6m > 0.5]
-repressed_ids_ko_6m_wt_6m <- genes.ids.ko_6m_vs_wt_6m[fold.change.ko_6m_vs_wt_6m < -0.5]
+activated_ids_ko_6m_wt_6m <- genes.ids.ko_6m_vs_wt_6m[fold.change.ko_6m_vs_wt_6m > 1.5]
+repressed_ids_ko_6m_wt_6m <- genes.ids.ko_6m_vs_wt_6m[fold.change.ko_6m_vs_wt_6m < -1.5]
 
 "TC1400000513.mm.2" %in% activated_ids_ko_6m_wt_6m
 "TC1400000513.mm.2" %in% repressed_ids_ko_6m_wt_6m
@@ -236,19 +287,53 @@ ego_ko_6m_vs_wt_6m <- enrichGO(
   keyType      = "ENTREZID",
   ont          = "BP",
   pAdjustMethod= "BH",
+  universe = universe_entrez,
   pvalueCutoff = 0.05,
   qvalueCutoff = 0.1,
   readable     = TRUE
 )
 
 # 5. Visualización
-barplot(ego_ko_6m_vs_wt_6m, showCategory = 20)
+barplot(ego_ko_6m_vs_wt_6m, showCategory = 10)
 
 
 ```
 
-
 *WT 24m vs KO 24m*
+
+Volcano:
+
+```{r}
+# 1. Obtener tabla completa del contraste
+ko_24m_vs_wt_24m <- topTable(contrast.results, number = Inf, coef = 4, sort.by = "none")
+
+# 2. Calcular -log10(p-value)
+ko_24m_vs_wt_24m$negLogP <- -log10(ko_24m_vs_wt_24m$P.Value)
+
+# 3. Clasificar genes según regulación y significancia
+ko_24m_vs_wt_24m$Significance <- "NS"
+ko_24m_vs_wt_24m$Significance[ko_24m_vs_wt_24m$logFC > 1.5 & ko_24m_vs_wt_24m$P.Value < 0.05] <- "Up"
+ko_24m_vs_wt_24m$Significance[ko_24m_vs_wt_24m$logFC < -1.5 & ko_24m_vs_wt_24m$P.Value < 0.05] <- "Down"
+
+# 4. Dibujar volcano plot
+library(ggplot2)
+
+ggplot(ko_24m_vs_wt_24m, aes(x = logFC, y = negLogP, color = Significance)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  scale_color_manual(values = c("Up" = "red", "Down" = "blue", "NS" = "gray")) +
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed", color = "black") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Volcano Plot: KO 24m vs WT 24m",
+    x = "log2 Fold Change",
+    y = "-log10(p-value)",
+    color = "Regulación"
+  )
+
+```
+
+Enriquecimiento:
 
 ```{r}
 
@@ -258,8 +343,8 @@ fold.change.ko_24m_vs_wt_24m <- ko_24m_vs_wt_24m$logFC
 genes.ids.ko_24m_vs_wt_24m <- rownames(ko_24m_vs_wt_24m)  # Transcript Cluster IDs
 
 # 2. Filtrar genes activados y reprimidos
-activated_ids_ko_24m_wt_24m <- genes.ids.ko_24m_vs_wt_24m[fold.change.ko_24m_vs_wt_24m > 0.5]
-repressed_ids_ko_24m_wt_24m <- genes.ids.ko_24m_vs_wt_24m[fold.change.ko_24m_vs_wt_24m < -0.5]
+activated_ids_ko_24m_wt_24m <- genes.ids.ko_24m_vs_wt_24m[fold.change.ko_24m_vs_wt_24m > 1.5]
+repressed_ids_ko_24m_wt_24m <- genes.ids.ko_24m_vs_wt_24m[fold.change.ko_24m_vs_wt_24m < -1.5]
 "TC1400000513.mm.2" %in% activated_ids_ko_24m_wt_24m
 "TC1400000513.mm.2" %in% repressed_ids_ko_24m_wt_24m
 
@@ -286,12 +371,15 @@ mapped_unique_24m <- mapped_24m %>%
 entrez_ids_activated_24m <- unique(mapped_unique_24m$ENTREZID)
 "Lgals3" %in% entrez_ids_activated_24m
 # 7. enrichGO con ENTREZIDs (ratón)
+
+# seleccionar universo todos los genes del microarray, pero solo los que me da el microarray, por probar. No tiene sentido usar todo el universo porque no estaría en el microarray. 
 ego_ko_24m_vs_wt_24m <- enrichGO(
   gene         = entrez_ids_activated_24m,
   OrgDb        = org.Mm.eg.db,
   keyType      = "ENTREZID",
   ont          = "BP",
   pAdjustMethod= "BH",
+  universe = universe_entrez,
   pvalueCutoff = 0.05,
   qvalueCutoff = 0.1,
   readable     = TRUE
@@ -303,7 +391,7 @@ barplot(ego_ko_24m_vs_wt_24m, showCategory = 10)
 
 ```
 
-
+Aquí los repressed de la condicion anterior
 
 ```{r}
 
@@ -328,17 +416,51 @@ ego_ko_24m_vs_wt_24m_repressed <- enrichGO(
   keyType      = "ENTREZID",
   ont          = "BP",
   pAdjustMethod= "BH",
+  universe = universe_entrez,
   pvalueCutoff = 0.05,
   qvalueCutoff = 0.1,
   readable     = TRUE
 )
 
 # 8. Visualización
-barplot(ego_ko_24m_vs_wt_24m_repressed, showCategory = 10)
+barplot(ego_ko_24m_vs_wt_24m_repressed, showCategory = 5)
 
 ```
 
+Aquí no sale ninguno porque como es lógico con tan pocos genes no puede haber rutas activadas o reprimidas.
+
 *KO 24m vs KO 6m*
+
+Volcano plot
+
+```{r}
+# 1. Obtener tabla completa del contraste
+ko_24m_vs_ko_6m <- topTable(contrast.results, number = Inf, coef = 2, sort.by = "none")
+
+# 2. Crear columna -log10(pvalue)
+ko_24m_vs_ko_6m$negLogP <- -log10(ko_24m_vs_ko_6m$P.Value)
+
+# 3. Clasificar genes para colorear
+ko_24m_vs_ko_6m$Significance <- "NS"  # Not significant
+ko_24m_vs_ko_6m$Significance[ko_24m_vs_ko_6m$logFC > 1.5 & ko_24m_vs_ko_6m$P.Value < 0.05] <- "Up"
+ko_24m_vs_ko_6m$Significance[ko_24m_vs_ko_6m$logFC < -1.5 & ko_24m_vs_ko_6m$P.Value < 0.05] <- "Down"
+
+# 4. Volcano plot con ggplot2
+library(ggplot2)
+
+ggplot(ko_24m_vs_ko_6m, aes(x = logFC, y = negLogP, color = Significance)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  scale_color_manual(values = c("Up" = "red", "Down" = "blue", "NS" = "gray")) +
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed", color = "black") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
+  theme_minimal() +
+  labs(title = "Volcano plot: KO 24m vs KO 6m",
+       x = "log2 Fold Change",
+       y = "-log10(p-value)",
+       color = "Regulación")
+```
+
+Enriquecimiento
 
 ```{r}
 
@@ -348,8 +470,8 @@ fold.change.ko_24m_vs_ko_6m <- ko_24m_vs_ko_6m$logFC
 genes.ids.ko_24m_vs_ko_6m <- rownames(ko_24m_vs_ko_6m)  # Transcript Cluster IDs
 
 # 2. Filtrar genes activados y reprimidos
-activated_ids_ko_24m_ko_6m <- genes.ids.ko_24m_vs_ko_6m[fold.change.ko_24m_vs_ko_6m > 0.5]
-repressed_ids_ko_24m_ko_6m <- genes.ids.ko_24m_vs_ko_6m[fold.change.ko_24m_vs_ko_6m < -0.5]
+activated_ids_ko_24m_ko_6m <- genes.ids.ko_24m_vs_ko_6m[fold.change.ko_24m_vs_ko_6m > 1.5]
+repressed_ids_ko_24m_ko_6m <- genes.ids.ko_24m_vs_ko_6m[fold.change.ko_24m_vs_ko_6m < -1.5]
 "TC1400000513.mm.2" %in% activated_ids_ko_24m_ko_6m
 "TC1400000513.mm.2" %in% repressed_ids_ko_24m_ko_6m
 # 3. Cargar paquetes
@@ -380,6 +502,7 @@ ego_ko_24m_vs_ko_6m <- enrichGO(
   keyType      = "ENTREZID",
   ont          = "BP",
   pAdjustMethod= "BH",
+  universe = universe_entrez,
   pvalueCutoff = 0.05,
   qvalueCutoff = 0.1,
   readable     = TRUE
@@ -391,8 +514,41 @@ barplot(ego_ko_24m_vs_ko_6m, showCategory = 10)
 
 ```
 
-
 *WT 24m vs WT 6m*
+
+Volcano plot
+
+```{r}
+# 1. Obtener tabla completa del contraste
+wt_24m_vs_wt_6m <- topTable(contrast.results, number = Inf, coef = 3, sort.by = "none")
+
+# 2. Calcular -log10(p-value)
+wt_24m_vs_wt_6m$negLogP <- -log10(wt_24m_vs_wt_6m$P.Value)
+
+# 3. Clasificar genes según significancia
+wt_24m_vs_wt_6m$Significance <- "NS"  # Not Significant
+wt_24m_vs_wt_6m$Significance[wt_24m_vs_wt_6m$logFC > 1.5 & wt_24m_vs_wt_6m$P.Value < 0.05] <- "Up"
+wt_24m_vs_wt_6m$Significance[wt_24m_vs_wt_6m$logFC < -1.5 & wt_24m_vs_wt_6m$P.Value < 0.05] <- "Down"
+
+# 4. Graficar volcano plot con ggplot2
+library(ggplot2)
+
+ggplot(wt_24m_vs_wt_6m, aes(x = logFC, y = negLogP, color = Significance)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  scale_color_manual(values = c("Up" = "red", "Down" = "blue", "NS" = "gray")) +
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed", color = "black") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Volcano Plot: WT 24m vs WT 6m",
+    x = "log2 Fold Change",
+    y = "-log10(p-value)",
+    color = "Regulación"
+  )
+
+```
+
+Enriquecimiento
 
 ```{r}
 
@@ -402,8 +558,8 @@ fold.change.wt_24m_vs_wt_6m <- wt_24m_vs_wt_6m$logFC
 genes.ids.wt_24m_vs_wt_6m <- rownames(wt_24m_vs_wt_6m)  # Transcript Cluster IDs
 
 # 2. Filtrar genes activados y reprimidos
-activated_ids_wt_24m_vs_wt_6m <- genes.ids.wt_24m_vs_wt_6m[fold.change.wt_24m_vs_wt_6m > 0.5]
-repressed_ids_wt_24m_vs_wt_6m <- genes.ids.wt_24m_vs_wt_6m[fold.change.wt_24m_vs_wt_6m < -0.5]
+activated_ids_wt_24m_vs_wt_6m <- genes.ids.wt_24m_vs_wt_6m[fold.change.wt_24m_vs_wt_6m > 1.5]
+repressed_ids_wt_24m_vs_wt_6m <- genes.ids.wt_24m_vs_wt_6m[fold.change.wt_24m_vs_wt_6m < -1.5]
 
 "TC1400000513.mm.2" %in% activated_ids_wt_24m_vs_wt_6m
 "TC1400000513.mm.2" %in% repressed_ids_wt_24m_vs_wt_6m
@@ -434,6 +590,7 @@ ego_wt_24m_vs_wt_6m <- enrichGO(
   keyType      = "ENTREZID",
   ont          = "BP",
   pAdjustMethod= "BH",
+  universe = universe_entrez,
   pvalueCutoff = 0.05,
   qvalueCutoff = 0.1,
   readable     = TRUE
@@ -445,6 +602,8 @@ barplot(ego_wt_24m_vs_wt_6m, showCategory = 10)
 
 
 ```
+
+Repressed de la condición anterior
 
 ```{r}
 # 4. Mapear IDs del array → ENTREZID
@@ -467,6 +626,7 @@ ego_wt_24m_vs_wt_6m <- enrichGO(
   keyType      = "ENTREZID",
   ont          = "BP",
   pAdjustMethod= "BH",
+  universe = universe_entrez,
   pvalueCutoff = 0.05,
   qvalueCutoff = 0.1,
   readable     = TRUE
@@ -478,15 +638,14 @@ barplot(ego_wt_24m_vs_wt_6m, showCategory = 10)
 
 ```
 
-
 Esto me da la traducción de como se llama la galectina 3 en mi entrezid.
+
 ```{r}
 AnnotationDbi::select(clariomsmousetranscriptcluster.db,
                       keys = "TC1400000513.mm.2",
                       columns = "SYMBOL",
                       keytype = "PROBEID")
 ```
-
 
 ```{r}
 symbol_to_probes <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
@@ -496,17 +655,4 @@ symbol_to_probes <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
 symbol_to_probes
 
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
 
