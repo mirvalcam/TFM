@@ -1,5 +1,5 @@
 ---
-title: "Análisis transcriptómico de gal-3"
+title: "Análisis transcriptómico"
 author: "Miriam Valdayo Camacho"
 date: "2025-03-30"
 output: html_document
@@ -22,7 +22,7 @@ celFiles <- c(ko_mouses_6m, wt_mouses_6m, ko_mouses_24, wt_mouses_24)
 # leemos los datos
 microarray.raw.data <- read.celfiles(celFiles)
 
-annotation(microarray.raw.data) #esto nos da el tipo de array
+annotation(microarray.raw.data) 
 
 ```
 
@@ -30,7 +30,7 @@ annotation(microarray.raw.data) #esto nos da el tipo de array
 #BiocManager::install("clariomsmousetranscriptcluster.db")
 #BiocManager::install("AnnotationDbi")
 library(clariomsmousetranscriptcluster.db)
-library(AnnotationDbi)
+library(AnnotationDbi) #esta es la anotación que voy a usar
 
 ```
 
@@ -71,31 +71,37 @@ expression.level <- exprs(microarray.processed.data)
 head(expression.level)
 dim(expression.level)
 
+# Calcular la media de expresión para cada sonda
+mean_expression <- rowMeans(expression.level)
+
+# Filtrar sondas con media de expresión mayor a un umbral (por ejemplo, 5)
+filtered_expression <- expression.level[mean_expression > 5, ]
+
 
 sampleID <- c("ko1_6m","ko2_6m","ko3_6m","ko4_6m",
               "wt1_6m","wt2_6m","wt3_6m","wt4_6m",
               "ko1_24m","ko2_24m","ko3_24m","ko4_24m",
               "wt1_24m","wt2_24m","wt3_24m")
-colnames(expression.level) <- sampleID
-head(expression.level)
+colnames(filtered_expression) <- sampleID
+head(filtered_expression)
 
 
 # réplicas KO a 6 meses
-plot(expression.level[,"ko1_6m"], expression.level[,"ko2_6m"],
+plot(filtered_expression[,"ko1_6m"], filtered_expression[,"ko2_6m"],
      pch = 19, col = "grey", cex = 0.5,
      xlab = "KO 6m - réplica 1", ylab = "KO 6m - réplica 2")
 text(x = 4, y = 12,
      labels = paste0("cor = ", 
-                     round(100 * cor(expression.level[,"ko1_6m"], expression.level[,"ko2_6m"]), 2), "%"))
+                     round(100 * cor(filtered_expression[,"ko1_6m"], filtered_expression[,"ko2_6m"]), 2), "%"))
 
 # réplicas KO a 24 meses
-plot(expression.level[,"ko1_24m"], expression.level[,"ko2_24m"],
+plot(filtered_expression[,"ko1_24m"], filtered_expression[,"ko2_24m"],
      pch = 19, col = "grey", cex = 0.5,
      xlab = "KO 24m - réplica 1", ylab = "KO 24m - réplica 2")
 
 text(x = 4, y = 12,
      labels = paste0("cor = ", 
-                     round(100 * cor(expression.level[,"ko1_24m"], expression.level[,"ko2_24m"]), 2), "%"))
+                     round(100 * cor(filtered_expression[,"ko1_24m"], filtered_expression[,"ko2_24m"]), 2), "%"))
 
 ```
 
@@ -105,7 +111,7 @@ ANÁLISIS DE COMPONENTES PRINCIPALES
 library(FactoMineR)
 library(factoextra)
 
-pca.gene.expression <- data.frame(colnames(expression.level),t(expression.level))
+pca.gene.expression <- data.frame(colnames(filtered_expression),t(filtered_expression))
 colnames(pca.gene.expression)[1] <- "Sample"
 
 # Realiza el PCA con variable cualitativa suplementaria
@@ -128,14 +134,14 @@ fviz_dend(res.hcpc,
 
 ```
 
-Colapsamos las réplicas en un único vector.
+Unimos las réplicas
 
 ```{r}
 
-ko_6m <- (expression.level[,"ko1_6m"] + expression.level[,"ko2_6m"] + expression.level[,"ko3_6m"] + expression.level[,"ko4_6m"])/4
-wt_6m <- (expression.level[,"wt1_6m"] + expression.level[,"wt2_6m"] + expression.level[,"wt3_6m"] + expression.level[,"wt4_6m"])/4
-ko_24m <- (expression.level[,"ko1_24m"] + expression.level[,"ko2_24m"] + expression.level[,"ko3_24m"] + expression.level[,"ko4_24m"])/4
-wt_24m <- (expression.level[,"wt1_24m"] + expression.level[,"wt2_24m"] + expression.level[,"wt3_24m"])/3
+ko_6m <- (filtered_expression[,"ko1_6m"] + filtered_expression[,"ko2_6m"] + filtered_expression[,"ko3_6m"] + filtered_expression[,"ko4_6m"])/4
+wt_6m <- (filtered_expression[,"wt1_6m"] + filtered_expression[,"wt2_6m"] + filtered_expression[,"wt3_6m"] + filtered_expression[,"wt4_6m"])/4
+ko_24m <- (filtered_expression[,"ko1_24m"] + filtered_expression[,"ko2_24m"] + filtered_expression[,"ko3_24m"] + filtered_expression[,"ko4_24m"])/4
+wt_24m <- (filtered_expression[,"wt1_24m"] + filtered_expression[,"wt2_24m"] + filtered_expression[,"wt3_24m"])/3
 
 
 mean.expression <- matrix(c(ko_6m,wt_6m,ko_24m,wt_24m),ncol=4)
@@ -145,7 +151,8 @@ colnames(mean.expression) <- conditions.id
 head(mean.expression)
 
 
-plot(ko_6m,wt_6m,xlab="Ko 6 meses",ylab="WT 6 meses",pch=19,cex=0.5)
+#plot(ko_6m,wt_6m,xlab="Ko 6 meses",ylab="WT 6 meses",pch=19,cex=0.5)
+
 
 ```
 
@@ -155,18 +162,17 @@ A continuación hacemos contrastes de hipótesis:
 
 library(limma)
 
-
 experimental.design <- model.matrix(~ -1+factor(c(1,1,1,1,2,2,2,2,3,3,3,3,4,4,4)))
 colnames(experimental.design) <- c("ko_6m","wt_6m","ko_24m","wt_24m")
 experimental.design
 
 
 
-dim(expression.level)
+dim(filtered_expression)
 dim(experimental.design)
 
 
-linear.fit <- lmFit(expression.level, experimental.design)
+linear.fit <- lmFit(filtered_expression, experimental.design)
 
 contrast.matrix <- makeContrasts(
   ko_6m - wt_6m,
@@ -186,18 +192,19 @@ contrast.results <- eBayes(contrast.linear.fit)
 
 ```
 
-Aquí creamos el universo que utilizaremos para hacer los enriquecimientos funcionales.
+Aquí creamos el universo que utilizaremos para hacer los enriquecimientos funcionales. Perdemos unos 10000 genes, pero supuestamente es normal, eso habrá que verlo
 
-```{r}
-# Esto asume que rownames(expression.level) tiene los IDs tipo "TCxxxxx"
-universe_ids <- rownames(expression.level)
+```{r include=FALSE}
+# Esto asume que rownames(expression.level) tiene los IDs tipo "TCxxxxx", seguro?
+
+universe_ids <- rownames(filtered_expression)
 universe_mapped <- AnnotationDbi::select(
   clariomsmousetranscriptcluster.db,
   keys = universe_ids,
   columns = "ENTREZID",
   keytype = "PROBEID"
 )
-
+library(tidyverse)
 # Limpiar duplicados y NAs
 universe_clean <- universe_mapped %>%
   filter(!is.na(ENTREZID)) %>%
@@ -245,59 +252,90 @@ ggplot(ko_6m_vs_wt_6m, aes(x = logFC, y = negLogP, color = Significance)) +
 Enriquecimiento
 
 ```{r}
-
+# ----------------------------
 # 1. Extraer tabla y logFC
-ko_6m_vs_wt_6m <- topTable(contrast.results, number = 29129, coef = 1, sort.by = "logFC")
+# ----------------------------
+ko_6m_vs_wt_6m <- topTable(contrast.results, number = Inf, coef = 1, sort.by = "logFC")
 fold.change.ko_6m_vs_wt_6m <- ko_6m_vs_wt_6m$logFC
-genes.ids.ko_6m_vs_wt_6m <- rownames(ko_6m_vs_wt_6m)  # Transcript cluster IDs
+genes.ids.ko_6m_vs_wt_6m <- rownames(ko_6m_vs_wt_6m)  # PROBEIDs
 
+# ----------------------------
 # 2. Filtrar genes activados y reprimidos
+# ----------------------------
 activated_ids_ko_6m_wt_6m <- genes.ids.ko_6m_vs_wt_6m[fold.change.ko_6m_vs_wt_6m > 1.5]
 repressed_ids_ko_6m_wt_6m <- genes.ids.ko_6m_vs_wt_6m[fold.change.ko_6m_vs_wt_6m < -1.5]
 
-"TC1400000513.mm.2" %in% activated_ids_ko_6m_wt_6m
-"TC1400000513.mm.2" %in% repressed_ids_ko_6m_wt_6m
-
-# 3. Mapear PROBEID → ENTREZID usando el paquete oficial
+# ----------------------------
+# 3. Mapear PROBEID → ENTREZID
+# ----------------------------
 library(clariomsmousetranscriptcluster.db)
 library(AnnotationDbi)
 library(dplyr)
 
-# Obtener todos los mapeos posibles
-mapped <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
-                                keys = activated_ids_ko_6m_wt_6m,
-                                columns = "ENTREZID",
-                                keytype = "PROBEID")
+# ACTIVADOS
+mapped_activated <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                          keys = activated_ids_ko_6m_wt_6m,
+                                          columns = "ENTREZID",
+                                          keytype = "PROBEID")
 
-# Filtrar duplicados y NAs
-mapped_unique <- mapped %>%
+entrez_ids_activated <- mapped_activated %>%
   filter(!is.na(ENTREZID)) %>%
-  distinct(PROBEID, .keep_all = TRUE)
+  distinct(PROBEID, .keep_all = TRUE) %>%
+  pull(ENTREZID)
 
-# Obtener ENTREZIDs únicos
-entrez_ids_activated <- unique(mapped_unique$ENTREZID)
+# REPRIMIDOS
+mapped_repressed <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                          keys = repressed_ids_ko_6m_wt_6m,
+                                          columns = "ENTREZID",
+                                          keytype = "PROBEID")
 
-# 4. enrichGO con ENTREZID únicos
+entrez_ids_repressed <- mapped_repressed %>%
+  filter(!is.na(ENTREZID)) %>%
+  distinct(PROBEID, .keep_all = TRUE) %>%
+  pull(ENTREZID)
+
+# ----------------------------
+# 4. Enriquecimiento GO (BP)
+# ----------------------------
 library(clusterProfiler)
 library(org.Mm.eg.db)
 
-ego_ko_6m_vs_wt_6m <- enrichGO(
-  gene         = entrez_ids_activated,
-  OrgDb        = org.Mm.eg.db,
-  keyType      = "ENTREZID",
-  ont          = "BP",
-  pAdjustMethod= "BH",
-  universe = universe_entrez,
-  pvalueCutoff = 0.05,
-  qvalueCutoff = 0.1,
-  readable     = TRUE
+# Definir universo si ya lo tenés
+# Por ejemplo, universo_entrez <- all_entrez_from_platform
+# Asegurate de que esté bien definido o se puede omitir para usar todo el background
+
+ego_activated <- enrichGO(
+  gene          = entrez_ids_activated,
+  OrgDb         = org.Mm.eg.db,
+  keyType       = "ENTREZID",
+  ont           = "BP",
+  pAdjustMethod = "BH",
+  universe      = universe_entrez,  # Podés quitar esto si querés usar el default
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1,
+  readable      = TRUE
 )
 
-# 5. Visualización
-barplot(ego_ko_6m_vs_wt_6m, showCategory = 10)
+ego_repressed <- enrichGO(
+  gene          = entrez_ids_repressed,
+  OrgDb         = org.Mm.eg.db,
+  keyType       = "ENTREZID",
+  ont           = "BP",
+  pAdjustMethod = "BH",
+  universe      = universe_entrez,
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1,
+  readable      = TRUE
+)
 
+# ----------------------------
+# 5. Visualización
+# ----------------------------
+barplot(ego_activated, showCategory = 10)
+#barplot(ego_repressed, showCategory = 10, main = "Genes Reprimidos - GO:BP") no sale nada, lógico porque son pocos genes, lo que no debería es de salir antes. 
 
 ```
+
 
 *WT 24m vs KO 24m*
 
@@ -345,8 +383,6 @@ genes.ids.ko_24m_vs_wt_24m <- rownames(ko_24m_vs_wt_24m)  # Transcript Cluster I
 # 2. Filtrar genes activados y reprimidos
 activated_ids_ko_24m_wt_24m <- genes.ids.ko_24m_vs_wt_24m[fold.change.ko_24m_vs_wt_24m > 1.5]
 repressed_ids_ko_24m_wt_24m <- genes.ids.ko_24m_vs_wt_24m[fold.change.ko_24m_vs_wt_24m < -1.5]
-"TC1400000513.mm.2" %in% activated_ids_ko_24m_wt_24m
-"TC1400000513.mm.2" %in% repressed_ids_ko_24m_wt_24m
 
 
 # 3. Cargar paquetes de anotación y enriquicimiento
@@ -369,7 +405,7 @@ mapped_unique_24m <- mapped_24m %>%
 
 # 6. Extraer ENTREZ IDs únicos
 entrez_ids_activated_24m <- unique(mapped_unique_24m$ENTREZID)
-"Lgals3" %in% entrez_ids_activated_24m
+
 # 7. enrichGO con ENTREZIDs (ratón)
 
 # seleccionar universo todos los genes del microarray, pero solo los que me da el microarray, por probar. No tiene sentido usar todo el universo porque no estaría en el microarray. 
@@ -391,7 +427,7 @@ barplot(ego_ko_24m_vs_wt_24m, showCategory = 10)
 
 ```
 
-Aquí los repressed de la condicion anterior
+Aquí los repressed (no sale un enriquecimiento porque son muy pocos genes). 
 
 ```{r}
 
@@ -408,7 +444,7 @@ mapped_unique_24m <- mapped_24m %>%
 
 # 6. Extraer ENTREZ IDs únicos
 entrez_ids_repressed_24m <- unique(mapped_unique_24m$ENTREZID)
-"Lgals3" %in% entrez_ids_activated_24m
+
 # 7. enrichGO con ENTREZIDs (ratón)
 ego_ko_24m_vs_wt_24m_repressed <- enrichGO(
   gene         = entrez_ids_repressed_24m,
@@ -423,11 +459,10 @@ ego_ko_24m_vs_wt_24m_repressed <- enrichGO(
 )
 
 # 8. Visualización
-barplot(ego_ko_24m_vs_wt_24m_repressed, showCategory = 5)
+barplot(ego_ko_24m_vs_wt_24m_repressed, showCategory = 10)
 
 ```
 
-Aquí no sale ninguno porque como es lógico con tan pocos genes no puede haber rutas activadas o reprimidas.
 
 *KO 24m vs KO 6m*
 
@@ -472,8 +507,7 @@ genes.ids.ko_24m_vs_ko_6m <- rownames(ko_24m_vs_ko_6m)  # Transcript Cluster IDs
 # 2. Filtrar genes activados y reprimidos
 activated_ids_ko_24m_ko_6m <- genes.ids.ko_24m_vs_ko_6m[fold.change.ko_24m_vs_ko_6m > 1.5]
 repressed_ids_ko_24m_ko_6m <- genes.ids.ko_24m_vs_ko_6m[fold.change.ko_24m_vs_ko_6m < -1.5]
-"TC1400000513.mm.2" %in% activated_ids_ko_24m_ko_6m
-"TC1400000513.mm.2" %in% repressed_ids_ko_24m_ko_6m
+
 # 3. Cargar paquetes
 library(clariomsmousetranscriptcluster.db)
 library(AnnotationDbi)
@@ -513,6 +547,41 @@ barplot(ego_ko_24m_vs_ko_6m, showCategory = 10)
 
 
 ```
+
+Repressed
+
+```{r}
+mapped_repressed_ko_24m_ko_6m <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                                       keys = repressed_ids_ko_24m_ko_6m,
+                                                       columns = "ENTREZID",
+                                                       keytype = "PROBEID")
+
+# 4. Limpiar mapeos: eliminar duplicados y NAs
+mapped_unique_repressed_ko_24m_ko_6m <- mapped_repressed_ko_24m_ko_6m %>%
+  filter(!is.na(ENTREZID)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+# 5. Extraer ENTREZ IDs únicos
+entrez_ids_repressed_ko_24m_ko_6m <- unique(mapped_unique_repressed_ko_24m_ko_6m$ENTREZID)
+
+# 6. enrichGO para genes reprimidos
+ego_repressed_ko_24m_ko_6m <- enrichGO(
+  gene          = entrez_ids_repressed_ko_24m_ko_6m,
+  OrgDb         = org.Mm.eg.db,
+  keyType       = "ENTREZID",
+  ont           = "BP",
+  pAdjustMethod = "BH",
+  universe      = universe_entrez,
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1,
+  readable      = TRUE
+)
+
+# 7. Visualización
+barplot(ego_repressed_ko_24m_ko_6m, showCategory = 10, main = "GO:BP - Genes Reprimidos KO 24m vs 6m")
+```
+
+
 
 *WT 24m vs WT 6m*
 
@@ -561,8 +630,6 @@ genes.ids.wt_24m_vs_wt_6m <- rownames(wt_24m_vs_wt_6m)  # Transcript Cluster IDs
 activated_ids_wt_24m_vs_wt_6m <- genes.ids.wt_24m_vs_wt_6m[fold.change.wt_24m_vs_wt_6m > 1.5]
 repressed_ids_wt_24m_vs_wt_6m <- genes.ids.wt_24m_vs_wt_6m[fold.change.wt_24m_vs_wt_6m < -1.5]
 
-"TC1400000513.mm.2" %in% activated_ids_wt_24m_vs_wt_6m
-"TC1400000513.mm.2" %in% repressed_ids_wt_24m_vs_wt_6m
 # 3. Cargar paquetes
 library(clariomsmousetranscriptcluster.db)
 library(AnnotationDbi)
@@ -638,21 +705,249 @@ barplot(ego_wt_24m_vs_wt_6m, showCategory = 10)
 
 ```
 
-Esto me da la traducción de como se llama la galectina 3 en mi entrezid.
+Traducción de mi gen de interés
 
 ```{r}
 AnnotationDbi::select(clariomsmousetranscriptcluster.db,
                       keys = "TC1400000513.mm.2",
                       columns = "SYMBOL",
                       keytype = "PROBEID")
-```
 
-```{r}
 symbol_to_probes <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
                                           keys = "Lgals3",
                                           columns = c("PROBEID", "ENTREZID"),
                                           keytype = "SYMBOL")
 symbol_to_probes
 
+
 ```
+
+Lista de genes
+
+```{r}
+library(dplyr)
+library(AnnotationDbi)
+library(clariomsmousetranscriptcluster.db)
+
+# ==========================
+# CONTRASTE 1: KO 6m vs WT 6m
+# ==========================
+names_ko_6m_wt_6m_activated <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                                     keys = activated_ids_ko_6m_wt_6m,
+                                                     columns = "SYMBOL",
+                                                     keytype = "PROBEID") %>%
+  filter(!is.na(SYMBOL)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+names_ko_6m_wt_6m_repressed <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                                     keys = repressed_ids_ko_6m_wt_6m,
+                                                     columns = "SYMBOL",
+                                                     keytype = "PROBEID") %>%
+  filter(!is.na(SYMBOL)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+# ==========================
+# CONTRASTE 2: KO 24m vs KO 6m
+# ==========================
+names_ko_24m_ko_6m_activated <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                                      keys = activated_ids_ko_24m_ko_6m,
+                                                      columns = "SYMBOL",
+                                                      keytype = "PROBEID") %>%
+  filter(!is.na(SYMBOL)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+names_ko_24m_ko_6m_repressed <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                                      keys = repressed_ids_ko_24m_ko_6m,
+                                                      columns = "SYMBOL",
+                                                      keytype = "PROBEID") %>%
+  filter(!is.na(SYMBOL)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+# ==========================
+# CONTRASTE 3: WT 24m vs WT 6m (si lo tenés)
+# ==========================
+# Activados
+names_wt_24m_wt_6m_activated <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                                      keys = activated_ids_wt_24m_vs_wt_6m,
+                                                      columns = "SYMBOL",
+                                                      keytype = "PROBEID") %>%
+  filter(!is.na(SYMBOL)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+# Reprimidos
+names_wt_24m_wt_6m_repressed <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                                      keys = repressed_ids_wt_24m_vs_wt_6m,
+                                                      columns = "SYMBOL",
+                                                      keytype = "PROBEID") %>%
+  filter(!is.na(SYMBOL)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+# ==========================
+# CONTRASTE 4: KO 24m vs WT 24m
+# ==========================
+names_ko_24m_wt_24m_activated <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                                       keys = activated_ids_ko_24m_wt_24m,
+                                                       columns = "SYMBOL",
+                                                       keytype = "PROBEID") %>%
+  filter(!is.na(SYMBOL)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+names_ko_24m_wt_24m_repressed <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                                       keys = repressed_ids_ko_24m_wt_24m,
+                                                       columns = "SYMBOL",
+                                                       keytype = "PROBEID") %>%
+  filter(!is.na(SYMBOL)) %>%
+  distinct(PROBEID, .keep_all = TRUE)
+
+
+library(kableExtra)
+
+# Añadir columnas de contexto a cada tabla
+tabla_completa <- bind_rows(
+  names_ko_6m_wt_6m_activated %>% mutate(Contraste = "KO6m_vs_WT6m", Estado = "Activado"),
+  names_ko_6m_wt_6m_repressed %>% mutate(Contraste = "KO6m_vs_WT6m", Estado = "Reprimido"),
+
+  names_ko_24m_ko_6m_activated %>% mutate(Contraste = "KO24m_vs_KO6m", Estado = "Activado"),
+  names_ko_24m_ko_6m_repressed %>% mutate(Contraste = "KO24m_vs_KO6m", Estado = "Reprimido"),
+
+  names_wt_24m_wt_6m_activated %>% mutate(Contraste = "WT24m_vs_WT6m", Estado = "Activado"),
+  names_wt_24m_wt_6m_repressed %>% mutate(Contraste = "WT24m_vs_WT6m", Estado = "Reprimido"),
+
+  names_ko_24m_wt_24m_activated %>% mutate(Contraste = "KO24m_vs_WT24m", Estado = "Activado"),
+  names_ko_24m_wt_24m_repressed %>% mutate(Contraste = "KO24m_vs_WT24m", Estado = "Reprimido")
+) %>%
+  select(Contraste, Estado, PROBEID, SYMBOL)
+
+# Ordenar por contraste y estado
+tabla_completa <- tabla_completa %>%
+  arrange(Contraste, Estado, SYMBOL)
+
+# Crear tabla HTML con estilo
+tabla_html <- kable(tabla_completa, format = "html", escape = FALSE,
+                    caption = "Genes activados y reprimidos con sus símbolos por contraste") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE, position = "left", font_size = 12)
+
+# Guardar como archivo HTML
+save_kable(tabla_html, file = "genes_contrastes.html")
+
+# También podés visualizarla en la consola si estás en RStudio:
+tabla_html
+
+```
+
+
+**HEATMAPS**
+
+```{r}
+# Paquetes necesarios
+library(limma)
+library(pheatmap)
+
+# === 1. Filtrar genes activados en cada contraste ===
+# Contrast 1
+tt1 <- topTable(contrast.results, number = Inf, coef = 1)
+act1 <- rownames(tt1[tt1$logFC > 1.5, ])
+
+# Contrast 2
+tt2 <- topTable(contrast.results, number = Inf, coef = 2)
+act2 <- rownames(tt2[tt2$logFC > 1.5, ])
+
+# Contrast 3
+tt3 <- topTable(contrast.results, number = Inf, coef = 3)
+act3 <- rownames(tt3[tt3$logFC > 1.5, ])
+
+# Contrast 4
+tt4 <- topTable(contrast.results, number = Inf, coef = 4)
+act4 <- rownames(tt4[tt4$logFC > 1.5, ])
+
+# Unir todos los genes activados
+all_activated_ids <- unique(c(act1, act2, act3, act4))
+
+# === 2. Extraer expresión solo de genes activados ===
+expr_activated_all <- filtered_expression[all_activated_ids, ]
+
+# === 3. Crear anotaciones para las muestras ===
+# Asumimos que los nombres de columna son algo como: "wt_6m_1", "ko_6m_2", etc.
+sample_ids <- colnames(filtered_expression)
+
+# Crear vector de condiciones
+sample_conditions <- data.frame(
+  condition = c(rep("ko_6m", 4),
+                rep("wt_6m", 4),
+                rep("ko_24m", 4),
+                rep("wt_24m", 3)),
+  row.names = sample_ids
+)
+
+# === 4. Calcular distancias entre muestras ===
+# Transponer la matriz para tener muestras en filas
+sample_dist <- dist(t(expr_activated_all))
+
+# Convertir a matriz
+sample_dist_matrix <- as.matrix(sample_dist)
+
+# === 5. Generar heatmap ===
+pheatmap(sample_dist_matrix,
+         annotation_col = sample_conditions,
+         annotation_row = sample_conditions,
+         main = "Diferentes genes activados en los distintos contrastes",
+         fontsize = 10,
+         border_color = NA)
+
+```
+
+
+```{r}
+# Paquetes necesarios
+library(limma)
+library(pheatmap)
+
+# === 1. Filtrar genes activados en cada contraste ===
+# (Esto es igual que antes)
+tt1 <- topTable(contrast.results, number = Inf, coef = 1)
+act1 <- rownames(tt1[tt1$logFC > 1.5, ])
+
+tt2 <- topTable(contrast.results, number = Inf, coef = 2)
+act2 <- rownames(tt2[tt2$logFC > 1.5, ])
+
+tt3 <- topTable(contrast.results, number = Inf, coef = 3)
+act3 <- rownames(tt3[tt3$logFC > 1.5, ])
+
+tt4 <- topTable(contrast.results, number = Inf, coef = 4)
+act4 <- rownames(tt4[tt4$logFC > 1.5, ])
+
+all_activated_ids <- unique(c(act1, act2, act3, act4))
+
+# === 2. Extraer expresión de genes activados ===
+expr_activated_all <- filtered_expression[all_activated_ids, ]
+
+# (Opcional) Transformar en log2 si hace falta
+# expr_activated_all <- log2(expr_activated_all + 1)
+
+# === 3. Calcular distancias entre genes ===
+# No se transpone, porque queremos comparar los genes (filas)
+gene_dist <- dist(expr_activated_all)
+
+# Convertir a matriz
+gene_dist_matrix <- as.matrix(gene_dist)
+
+# === 4. Anotaciones opcionales (por ejemplo, si tenés categorías funcionales de genes) ===
+# Por ahora lo dejamos sin anotaciones
+
+# === 5. Generar heatmap ===
+pheatmap(gene_dist_matrix,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         show_colnames = FALSE,
+         show_rownames = FALSE,  # podés poner TRUE si querés ver los nombres de los genes
+         main = "Diferencias de expresión entre genes activados",
+         fontsize = 10,
+         border_color = NA,
+         color = colorRampPalette(c("blue", "white", "red"))(100))
+
+```
+
+
+
 
