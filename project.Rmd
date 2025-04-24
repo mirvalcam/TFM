@@ -40,6 +40,7 @@ library(AnnotationDbi) #este es el paquete que uso para poder anotar clariomsmou
 # no hacemos todos porque después hemos usado un paquete para hacer esto
 image(microarray.raw.data[,1],col=rainbow(100))
 image(microarray.raw.data[,2],col=rainbow(100))
+image(microarray.raw.data[,3],col=rainbow(100))
 
 # boxplot e histograma
 boxplot(microarray.raw.data, col = rainbow(length(sampleNames(microarray.raw.data))), las=2, ylab="Fluorescence (R.U.)")
@@ -912,5 +913,7 @@ pheatmap(gene_dist_matrix,
 ```
 
 
+
+should try to make a heatmap only with repressed DEGs
 
 
