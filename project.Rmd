@@ -86,6 +86,7 @@ colnames(filtered_expression) <- sampleID
 head(filtered_expression)
 
 
+
 # réplicas KO a 6 meses
 plot(filtered_expression[,"ko1_6m"], filtered_expression[,"ko2_6m"],
      pch = 19, col = "grey", cex = 0.5,
@@ -102,6 +103,8 @@ plot(filtered_expression[,"ko1_24m"], filtered_expression[,"ko2_24m"],
 text(x = 4, y = 12,
      labels = paste0("cor = ", 
                      round(100 * cor(filtered_expression[,"ko1_24m"], filtered_expression[,"ko2_24m"]), 2), "%"))
+
+
 
 ```
 
@@ -199,26 +202,28 @@ Aquí creamos el universo que utilizaremos para hacer los enriquecimientos funci
 # mapeamos nuestro universo entero de microarrays, es decir, nuestros nombres de filas del microarray con los nombres de PROBEID, para buscar una relacion
 
 universe_ids <- rownames(filtered_expression)
+writeLines(universe_ids, "universe_ids.txt")
 universe_mapped <- AnnotationDbi::select(
   clariomsmousetranscriptcluster.db,
   keys = universe_ids,
   columns = "ENTREZID",
   keytype = "PROBEID"
 )
+
 library(tidyverse)
 # limpiamos duplicados y NAs
 universe_clean <- universe_mapped %>%
   filter(!is.na(ENTREZID)) %>%
   distinct(PROBEID, .keep_all = TRUE)
 
-# solo los ENTREZID
+# nos quedamos solo los ENTREZID
 universe_entrez <- unique(universe_clean$ENTREZID)
 
 ```
 
 *KO 6m vs WT 6m*
 
-Volcano:
+Visualización de los genes activados y reprimidos cuando hacemos un KO a los 6 meses.
 
 ```{r}
 # tabla completa del contraste
@@ -250,7 +255,7 @@ ggplot(ko_6m_vs_wt_6m, aes(x = logFC, y = negLogP, color = Significance)) +
 
 ```
 
-Enriquecimiento
+Enriquecimiento génico y de rutas
 
 ```{r}
 
@@ -269,7 +274,6 @@ repressed_ids_ko_6m_wt_6m <- genes.ids.ko_6m_vs_wt_6m[fold.change.ko_6m_vs_wt_6m
 
 # mapear PROBEID → ENTREZID
 
-library(clariomsmousetranscriptcluster.db)
 library(AnnotationDbi)
 library(dplyr)
 
@@ -280,17 +284,6 @@ mapped_activated <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
                                           keytype = "PROBEID")
 
 entrez_ids_activated <- mapped_activated %>%
-  filter(!is.na(ENTREZID)) %>%
-  distinct(PROBEID, .keep_all = TRUE) %>%
-  pull(ENTREZID)
-
-# REPRIMIDOS
-mapped_repressed <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
-                                          keys = repressed_ids_ko_6m_wt_6m,
-                                          columns = "ENTREZID",
-                                          keytype = "PROBEID")
-
-entrez_ids_repressed <- mapped_repressed %>%
   filter(!is.na(ENTREZID)) %>%
   distinct(PROBEID, .keep_all = TRUE) %>%
   pull(ENTREZID)
@@ -306,13 +299,70 @@ ego_activated <- enrichGO(
   gene          = entrez_ids_activated,
   OrgDb         = org.Mm.eg.db,
   keyType       = "ENTREZID",
-  ont           = "BP",
+  ont           = "BP",  ## lets try more ontologies here
   pAdjustMethod = "BH",
   universe      = universe_entrez,  
   pvalueCutoff  = 0.05,
   qvalueCutoff  = 0.1,
   readable      = TRUE
 )
+
+barplot(ego_activated, showCategory = 10, title = "GO - Activados KO 6m vs WT 6m")
+#barplot(ego_repressed, showCategory = 10, main = "Genes Reprimidos - GO:BP") no sale nada, lógico porque son pocos genes, lo que no debería es de salir antes. 
+
+
+
+# KEGG enrichment
+ekegg_activated <- enrichKEGG(
+  gene          = entrez_ids_activated,
+  organism      = "mmu",  # Mus musculus
+  universe      = universe_entrez,
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1
+)
+
+# Visualizar
+barplot(ekegg_activated, showCategory = 15, title = "KEGG - Activados KO 6m vs WT 6m")
+
+library(pathview)
+
+df.activated.enrich.kegg <- as.data.frame(ekegg_activated)
+head(df.activated.enrich.kegg)
+
+mapped_all <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                    keys = genes.ids.ko_6m_vs_wt_6m,
+                                    columns = "ENTREZID",
+                                    keytype = "PROBEID")
+
+
+names(fold.change.ko_6m_vs_wt_6m) <- mapped_all$ENTREZID[match(rownames(ko_6m_vs_wt_6m), mapped_all$PROBEID)]
+fold.change.ko_6m_vs_wt_6m <- fold.change.ko_6m_vs_wt_6m[!is.na(names(fold.change.ko_6m_vs_wt_6m))]
+
+pathview(
+  gene.data  = fold.change.ko_6m_vs_wt_6m,
+  pathway.id = "mmu05033",  # aqui pongo el que quiera ver
+  species    = "mmu",
+  gene.idtype = "ENTREZID",
+  limit = list(gene = max(abs(fold.change.ko_6m_vs_wt_6m)), cpd = 1)
+)
+
+```
+
+Repressed
+
+```{r}
+# REPRIMIDOS
+mapped_repressed <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                          keys = repressed_ids_ko_6m_wt_6m,
+                                          columns = "ENTREZID",
+                                          keytype = "PROBEID")
+
+entrez_ids_repressed <- mapped_repressed %>%
+  filter(!is.na(ENTREZID)) %>%
+  distinct(PROBEID, .keep_all = TRUE) %>%
+  pull(ENTREZID)
+
+
 
 ego_repressed <- enrichGO(
   gene          = entrez_ids_repressed,
@@ -326,13 +376,21 @@ ego_repressed <- enrichGO(
   readable      = TRUE
 )
 
-barplot(ego_activated, showCategory = 10)
-#barplot(ego_repressed, showCategory = 10, main = "Genes Reprimidos - GO:BP") no sale nada, lógico porque son pocos genes, lo que no debería es de salir antes. 
+
+
+ekegg_repressed <- enrichKEGG(
+  gene          = entrez_ids_repressed,
+  organism      = "mmu",  # Mus musculus
+  universe      = universe_entrez,
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1
+)
+
 
 ```
 
 
-*WT 24m vs KO 24m*
+*KO 24m vs WT 24m *
 
 Volcano:
 
@@ -416,12 +474,45 @@ ego_ko_24m_vs_wt_24m <- enrichGO(
   readable     = TRUE
 )
 
-barplot(ego_ko_24m_vs_wt_24m, showCategory = 10)
+barplot(ego_ko_24m_vs_wt_24m, showCategory = 10, title = "GO - Activados KO 24m vs WT 24m")
+
+ekegg_activated_24_24 <- enrichKEGG(
+  gene          = entrez_ids_activated_24m,
+  organism      = "mmu",
+  universe      = universe_entrez,
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1
+)
+
+barplot(ekegg_activated_24_24, showCategory = 10, title = "KEGG - Activados KO 24m vs WT 24m")
+
+
+
+
+df.activated_24_24.enrich.kegg <- as.data.frame(ekegg_activated_24_24)
+head(df.activated_24_24.enrich.kegg)
+
+mapped_all_24_24 <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                    keys = genes.ids.ko_24m_vs_wt_24m,
+                                    columns = "ENTREZID",
+                                    keytype = "PROBEID")
+
+
+names(fold.change.ko_24m_vs_wt_24m) <- mapped_all$ENTREZID[match(rownames(ko_24m_vs_wt_24m), mapped_all$PROBEID)]
+fold.change.ko_24m_vs_wt_24m <- fold.change.ko_24m_vs_wt_24m[!is.na(names(fold.change.ko_24m_vs_wt_24m))]
+
+pathview(
+  gene.data  = fold.change.ko_24m_vs_wt_24m,
+  pathway.id = "mmu04657",  # aqui pongo el que quiera ver
+  species    = "mmu",
+  gene.idtype = "ENTREZID",
+  limit = list(gene = max(abs(fold.change.ko_24m_vs_wt_24m)), cpd = 1)
+)
 
 
 ```
 
-Aquí los repressed (no sale un enriquecimiento porque son muy pocos genes). 
+ 
 
 ```{r}
 
@@ -453,6 +544,28 @@ ego_ko_24m_vs_wt_24m_repressed <- enrichGO(
 )
 
 barplot(ego_ko_24m_vs_wt_24m_repressed, showCategory = 10)
+
+ekegg_repressed_24_24 <- enrichKEGG(
+  gene          = entrez_ids_repressed_24m,
+  organism      = "mmu",
+  universe      = universe_entrez,
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1
+)
+
+barplot(ekegg_repressed_24_24, showCategory = 10, title = "KEGG - Reprimidos KO 24m vs WT 24m")
+
+
+df.repressed_24_24.enrich.kegg <- as.data.frame(ekegg_repressed_24_24)
+head(df.repressed_24_24.enrich.kegg)
+
+pathview(
+  gene.data  = fold.change.ko_24m_vs_wt_24m,
+  pathway.id = "mmu04062",  # aqui pongo el que quiera ver
+  species    = "mmu",
+  gene.idtype = "ENTREZID",
+  limit = list(gene = max(abs(fold.change.ko_24m_vs_wt_24m)), cpd = 1)
+)
 
 ```
 
@@ -529,7 +642,40 @@ ego_ko_24m_vs_ko_6m <- enrichGO(
   readable     = TRUE
 )
 
-barplot(ego_ko_24m_vs_ko_6m, showCategory = 10)
+barplot(ego_ko_24m_vs_ko_6m, showCategory = 10, title = "GO - Atvivados KO 24m vs KO 6m")
+
+
+ekegg_activated_24_6_KO <- enrichKEGG(
+  gene          = entrez_ids_activated_ko_24m_ko_6m,
+  organism      = "mmu",
+  universe      = universe_entrez,
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1
+)
+
+barplot(ekegg_activated_24_6_KO, showCategory = 10, title = "KEGG - Atvivados KO 24m vs KO 6m")
+
+
+
+df.activated_24_6_KO.enrich.kegg <- as.data.frame(ekegg_activated_24_6_KO)
+head(df.activated_24_6_KO.enrich.kegg)
+
+mapped_all_24_6_KO <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                    keys = genes.ids.ko_24m_vs_ko_6m,
+                                    columns = "ENTREZID",
+                                    keytype = "PROBEID")
+
+
+names(fold.change.ko_24m_vs_ko_6m) <- mapped_all$ENTREZID[match(rownames(ko_24m_vs_ko_6m), mapped_all$PROBEID)]
+fold.change.ko_24m_vs_ko_6m <- fold.change.ko_24m_vs_ko_6m[!is.na(names(fold.change.ko_24m_vs_ko_6m))]
+
+pathview(
+  gene.data  = fold.change.ko_24m_vs_ko_6m,
+  pathway.id = "mmu04613",  # aqui pongo el que quiera ver
+  species    = "mmu",
+  gene.idtype = "ENTREZID",
+  limit = list(gene = max(abs(fold.change.ko_24m_vs_ko_6m)), cpd = 1)
+)
 
 
 ```
@@ -564,9 +710,32 @@ ego_repressed_ko_24m_ko_6m <- enrichGO(
 )
 
 barplot(ego_repressed_ko_24m_ko_6m, showCategory = 10, main = "GO:BP - Genes Reprimidos KO 24m vs 6m")
+
+ekegg_repressed_ko_24_6 <- enrichKEGG(
+  gene          = entrez_ids_repressed_ko_24m_ko_6m,
+  organism      = "mmu",
+  universe      = universe_entrez,
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1
+)
+
+barplot(ekegg_repressed_ko_24_6, showCategory = 10, title = "KEGG - Reprimidos KO 24m vs KO 6m")
+
+
+
+df.ekegg_repressed_ko_24_6 <- as.data.frame(ekegg_repressed_ko_24_6)
+head(df.ekegg_repressed_ko_24_6)
+
+pathview(
+  gene.data  = fold.change.ko_24m_vs_ko_6m,
+  pathway.id = "mmu04721",  # aqui pongo el que quiera ver
+  species    = "mmu",
+  gene.idtype = "ENTREZID",
+  limit = list(gene = max(abs(fold.change.ko_24m_vs_ko_6m)), cpd = 1)
+)
+
+
 ```
-
-
 
 *WT 24m vs WT 6m*
 
@@ -642,9 +811,39 @@ ego_wt_24m_vs_wt_6m <- enrichGO(
 )
 
 
-barplot(ego_wt_24m_vs_wt_6m, showCategory = 10)
+barplot(ego_wt_24m_vs_wt_6m, showCategory = 10, title = "GO - Reprimidos KO 24m vs WT 6m")
 
 
+ekegg_activated_wt_24_6 <- enrichKEGG(
+  gene          = entrez_ids_wt_24m_vs_wt_6m,
+  organism      = "mmu",
+  universe      = universe_entrez,
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1
+)
+
+barplot(ekegg_activated_wt_24_6, showCategory = 10, title = "KEGG - Reprimidos KO 24m vs WT 6m")
+
+
+df.ekegg_activated_wt_24_6 <- as.data.frame(ekegg_activated_wt_24_6)
+head(df.ekegg_activated_wt_24_6)
+
+mapped_all_24_6_WT <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
+                                    keys = genes.ids.wt_24m_vs_wt_6m,
+                                    columns = "ENTREZID",
+                                    keytype = "PROBEID")
+
+
+names(fold.change.wt_24m_vs_wt_6m) <- mapped_all$ENTREZID[match(rownames(wt_24m_vs_wt_6m), mapped_all$PROBEID)]
+fold.change.wt_24m_vs_wt_6m <- fold.change.wt_24m_vs_wt_6m[!is.na(names(fold.change.wt_24m_vs_wt_6m))]
+
+pathview(
+  gene.data  = fold.change.wt_24m_vs_wt_6m,
+  pathway.id = "mmu04657",  # aqui pongo el que quiera ver
+  species    = "mmu",
+  gene.idtype = "ENTREZID",
+  limit = list(gene = max(abs(fold.change.wt_24m_vs_wt_6m)), cpd = 1)
+)
 
 ```
 
@@ -678,8 +877,30 @@ ego_wt_24m_vs_wt_6m <- enrichGO(
 )
 
 
-barplot(ego_wt_24m_vs_wt_6m, showCategory = 10)
+barplot(ego_wt_24m_vs_wt_6m, showCategory = 10, title = "GO - Reprimidos KO 24m vs WT 6m")
 
+
+ekegg_repressed_24_6_WT <- enrichKEGG(
+  gene          = entrez_ids_wt_24m_vs_wt_6m,
+  organism      = "mmu",
+  universe      = universe_entrez,
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.1
+)
+
+barplot(ekegg_repressed_24_6_WT, showCategory = 10, title = "KEGG - Reprimidos KO 24m vs WT 6m")
+
+
+df.ekegg_repressed_24_6_WT <- as.data.frame(ekegg_repressed_24_6_WT)
+head(df.ekegg_repressed_24_6_WT)
+
+pathview(
+  gene.data  = fold.change.wt_24m_vs_wt_6m,
+  pathway.id = "mmu04933",  # aqui pongo el que quiera ver
+  species    = "mmu",
+  gene.idtype = "ENTREZID",
+  limit = list(gene = max(abs(fold.change.wt_24m_vs_wt_6m)), cpd = 1)
+)
 
 ```
 
@@ -831,10 +1052,13 @@ act4 <- rownames(tt4[tt4$logFC > 1.5, ])
 
 # unimos todos los genes activados
 all_activated_ids <- unique(c(act1, act2, act3, act4))
-
+all_repressed_ids <- unique(c(rownames(tt1[tt1$logFC < -1.5, ]),
+                          rownames(tt2[tt2$logFC < -1.5, ]),
+                          rownames(tt3[tt3$logFC < -1.5, ]),
+                          rownames(tt4[tt4$logFC < -1.5, ])))
 # expresión de genes activados
 expr_activated_all <- filtered_expression[all_activated_ids, ]
-
+expr_repressed_all <- filtered_expression[all_repressed_ids, ]
 #  anotaciones para las muestras
 # nombres de columna son como los de las réplicas: "wt_6m_1", "ko_6m_2", etc.
 sample_ids <- colnames(filtered_expression)
@@ -851,15 +1075,23 @@ sample_conditions <- data.frame(
 # distancias entre muestras 
 # hace falta transponer la matriz para tener muestras en filas
 sample_dist <- dist(t(expr_activated_all))
-
+sample_dist_rep <- dist(t(expr_repressed_all))
 # convertir a matriz
 sample_dist_matrix <- as.matrix(sample_dist)
+sample_dist_matrix_rep <- as.matrix(sample_dist_rep)
 
 # heatmap
 pheatmap(sample_dist_matrix,
          annotation_col = sample_conditions,
          annotation_row = sample_conditions,
          main = "Diferentes genes activados en los distintos contrastes",
+         fontsize = 10,
+         border_color = NA)
+
+pheatmap(sample_dist_matrix_rep,
+         annotation_col = sample_conditions,
+         annotation_row = sample_conditions,
+         main = "Diferentes genes reprimidos en los distintos contrastes",
          fontsize = 10,
          border_color = NA)
 
@@ -881,31 +1113,45 @@ tt4 <- topTable(contrast.results, number = Inf, coef = 4)
 act4 <- rownames(tt4[tt4$logFC > 1.5, ])
 
 all_activated_ids <- unique(c(act1, act2, act3, act4))
-
+all_repressed_ids <- unique(c(rownames(tt1[tt1$logFC < -1.5, ]),
+                          rownames(tt2[tt2$logFC < -1.5, ]),
+                          rownames(tt3[tt3$logFC < -1.5, ]),
+                          rownames(tt4[tt4$logFC < -1.5, ])))
 # expresión de genes activados
 expr_activated_all <- filtered_expression[all_activated_ids, ]
-
+expr_repressed_all<- filtered_expression[all_repressed_ids, ]
 # podríamos transformar a log2 si hace falta
 # expr_activated_all <- log2(expr_activated_all + 1)
 
 # distancias entre 
 # no se transpone, porque queremos comparar los genes (filas)
-gene_dist <- dist(expr_activated_all)
-
+gene_dist_act<- dist(expr_activated_all)
+gene_dist_rep<- dist(expr_repressed_all)
 # convertir a matriz
-gene_dist_matrix <- as.matrix(gene_dist)
+gene_dist_matrix_act <- as.matrix(gene_dist_act)
+gene_dist_matrix_rep <- as.matrix(gene_dist_rep)
 
 # Anotaciones opcionales (por ejemplo, si tenés categorías funcionales de genes)
 #Esto podría añadirlo, but IDK
 
 
 # heatmap 
-pheatmap(gene_dist_matrix,
+pheatmap(gene_dist_matrix_act,
          cluster_rows = TRUE,
          cluster_cols = TRUE,
          show_colnames = FALSE,
          show_rownames = FALSE,  # podés poner TRUE si querés ver los nombres de los genes
          main = "Diferencias de expresión entre genes activados",
+         fontsize = 10,
+         border_color = NA,
+         color = colorRampPalette(c("blue", "white", "red"))(100))
+
+pheatmap(gene_dist_matrix_rep,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         show_colnames = FALSE,
+         show_rownames = FALSE,  # podés poner TRUE si querés ver los nombres de los genes
+         main = "Diferencias de expresión entre genes reprimidos",
          fontsize = 10,
          border_color = NA,
          color = colorRampPalette(c("blue", "white", "red"))(100))
