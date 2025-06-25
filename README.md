@@ -1,6 +1,6 @@
 T# Transcriptomic Ageing — Microarray Analysis
 
-Short elevator-pitch describing what the repository does and whom it helps.
+
 
 ## Table of Contents
 - [Description](#description)
@@ -31,10 +31,8 @@ Short elevator-pitch describing what the repository does and whom it helps.
 - [Contact](#contact)
 
 ## Description
-Brief rationale and scientific context.
+
 
 ## Requirements
 * R ≥ 4.4.2 (tested on Windows 10)
-* See `renv.lock` or run the following:
-  ```r
-  install.packages(c("oligo", ...))
+
