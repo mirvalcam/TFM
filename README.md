@@ -3,7 +3,7 @@
 
 
 ## Table of Contents
-- [Description](#description)
+- Description
 - Requirements
   R version: “4.4.2.”
   install.packages(c(
@@ -11,14 +11,14 @@
   "arrayQualityMetrics", "FactoMineR", "factoextra", "limma",
   "tidyverse", "clusterProfiler", "org.Mm.eg.db", "pathview",
   "kableExtra"))
-- [Installation](#installation)
+- Installation
   git clone <tu-repo-url>
   cd <tu-repo>
   Rscript -e "install.packages(c(...))"
   
   After installing all the packages, create a folder (e.g., data/) and deposit the microarray files provided by contacting Rocío Martínez de Pablos (depablos@us.es).
 
-- [Repository Structure](#repository-structure)
+- Repository Structure
   data/         # Archivos CEL con datos de microarrays
   scripts/      # Código de análisis (preprocesamiento, DE, visualización)
   results/      # Figuras y tablas generadas
