@@ -1,10 +1,4 @@
-# 🧬 Transcriptomic Aging — Microarray and Proteomic Analysis
-
-## 📑 Table of Contents
-- [Description](#description)  
-- [Requirements](#requirements)  
-- [Results](#results)  
-- [Contact](#contact)
+# 🧬 Microarray and Proteomic Analysis in Aging
 
 ## 📄 Description
 This repository contains transcriptomic and proteomic data analysis from wild-type and galectin-3 knockout mouse microglia at different ages (6 and 24 months). The project investigates how aging alters microglial function—particularly inflammation, synaptic regulation, and lipid metabolism—and how deletion of galectin-3 modulates these processes. Results highlight galectin-3 as a key regulator of age-related neuroinflammation and a potential therapeutic target for neurodegenerative diseases.
