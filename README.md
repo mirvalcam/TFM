@@ -5,7 +5,7 @@ This repository contains transcriptomic and proteomic data analysis from wild-ty
 
 ## ⚙️ Requirements
 - **R version:** ≥ 4.4.2 (tested on Windows 10)  
-- **Required packages:**  
+- **Required packages in microarrays analysis:**  
 ```r
 install.packages(c(
   "oligo", 
@@ -20,6 +20,19 @@ install.packages(c(
   "org.Mm.eg.db", 
   "pathview", 
   "kableExtra"
+))
+```
+- **Required packages in proteomic analysis:**  
+```r
+install.packages(c(
+  library(readxl)
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(VennDiagram)
+  library(clusterProfiler)
+  library(org.Mm.eg.db)
+  library(kableExtra)
 ))
 ```
 📥 Data access: Due to data policy, datasets are available upon request. Please contact miriamvaldayo99@gmail.com to obtain access.
