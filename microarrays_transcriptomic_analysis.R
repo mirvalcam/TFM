@@ -1235,36 +1235,36 @@ names_ko_24m_wt_24m_repressed <- AnnotationDbi::select(clariomsmousetranscriptcl
 ## Merge and Annotate
 
 # Combine all contrasts into one table and add labels for contrast and regulation status
-tabla_completa <- bind_rows(
-  names_ko_6m_wt_6m_activated %>% mutate(Contraste = "KO6m_vs_WT6m", Estado = "Activated"),
-  names_ko_6m_wt_6m_repressed %>% mutate(Contraste = "KO6m_vs_WT6m", Estado = "Repressed"),
+complete_table <- bind_rows(
+  names_ko_6m_wt_6m_activated %>% mutate(Contrast = "KO6m_vs_WT6m", Status = "Activated"),
+  names_ko_6m_wt_6m_repressed %>% mutate(Contrast = "KO6m_vs_WT6m", Status = "Repressed"),
   
-  names_ko_24m_ko_6m_activated %>% mutate(Contraste = "KO24m_vs_KO6m", Estado = "Activated"),
-  names_ko_24m_ko_6m_repressed %>% mutate(Contraste = "KO24m_vs_KO6m", Estado = "Repressed"),
+  names_ko_24m_ko_6m_activated %>% mutate(Contrast = "KO24m_vs_KO6m", Status = "Activated"),
+  names_ko_24m_ko_6m_repressed %>% mutate(Contrast = "KO24m_vs_KO6m", Status = "Repressed"),
   
-  names_wt_24m_wt_6m_activated %>% mutate(Contraste = "WT24m_vs_WT6m", Estado = "Activated"),
-  names_wt_24m_wt_6m_repressed %>% mutate(Contraste = "WT24m_vs_WT6m", Estado = "Repressed"),
+  names_wt_24m_wt_6m_activated %>% mutate(Contrast = "WT24m_vs_WT6m", Status = "Activated"),
+  names_wt_24m_wt_6m_repressed %>% mutate(Contrast = "WT24m_vs_WT6m", Status = "Repressed"),
   
-  names_ko_24m_wt_24m_activated %>% mutate(Contraste = "KO24m_vs_WT24m", Estado = "Activated"),
-  names_ko_24m_wt_24m_repressed %>% mutate(Contraste = "KO24m_vs_WT24m", Estado = "Repressed")
+  names_ko_24m_wt_24m_activated %>% mutate(Contrast = "KO24m_vs_WT24m", Status = "Activated"),
+  names_ko_24m_wt_24m_repressed %>% mutate(Contrast = "KO24m_vs_WT24m", Status = "Repressed")
 ) %>%
   select(Contraste, Estado, PROBEID, SYMBOL)
 
 # Sort the table by contrast and regulation state
-tabla_completa <- tabla_completa %>%
-  arrange(Contraste, Estado, SYMBOL)
+complete_table <- complete_table %>%
+  arrange(Contrast, Status, SYMBOL)
 
 
 ## Render HTML Table
 
 # Format the table using kable and style it for HTML export
-tabla_html <- kable(tabla_completa, format = "html", escape = FALSE,
+table_html <- kable(complete_table, format = "html", escape = FALSE,
                     caption = "Activated and repressed genes with their symbols by contrast") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
                 full_width = FALSE, position = "left", font_size = 12)
 
 # Save the table as an HTML file
-save_kable(tabla_html, file = "genes_contrastes.html")
+save_kable(table_html, file = "contrasts_genes.html")
 
 # Display the styled table in the viewer
 table_html
