@@ -25,14 +25,14 @@ install.packages(c(
 - **Required packages in proteomic analysis:**  
 ```r
 install.packages(c(
-  library(readxl)
-  library(dplyr)
-  library(tidyr)
-  library(ggplot2)
-  library(VennDiagram)
-  library(clusterProfiler)
-  library(org.Mm.eg.db)
-  library(kableExtra)
+  "readxl",
+  "dplyr",
+  "tidyr",
+  "ggplot2",
+  "VennDiagram",
+  "clusterProfiler",
+  "org.Mm.eg.db",
+  "kableExtra"
 ))
 ```
 📥 Data access: Due to data policy, datasets are available upon request. Please contact miriamvaldayo99@gmail.com to obtain access.
