@@ -125,7 +125,8 @@ plot(filtered_expression[,"ko1_24m"],
      cex = 0.5,
      xlab = "KO 24m - Replicate 1",
      ylab = "KO 24m - Replicate 2",
-     xlim = c)
+     xlim = c(x_min, x_max),
+     ylim = c(y_min, y_max))
      
 
 # ==============================
@@ -678,34 +679,34 @@ barplot(ekegg_repressed_24_24, showCategory = 10, title = "KEGG - KO 24m vs WT 2
 
 # --------- Prepare data for Pathview visualization ----------
 
-# Map all contrast gene IDs (PROBEID) to ENTREZID
-mapped_all_24_24 <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
-                                          keys = genes.ids.ko_24m_vs_wt_24m,
-                                          columns = "ENTREZID",
-                                          keytype = "PROBEID")
+# Convert the enrichKEGG result into a data frame
+df.repressed_24_24.enrich.kegg <- as.data.frame(ekegg_repressed_24_24)
 
-# Rename the fold change vector with corresponding ENTREZ IDs
-names(fold.change.ko_24m_vs_wt_24m) <- mapped_all_24_24$ENTREZID[
-  match(rownames(ko_24m_vs_wt_24m), mapped_all_24_24$PROBEID)
-]
+# Display the first rows to inspect enriched pathways
+head(df.repressed_24_24.enrich.kegg)
 
-# Remove NAs in names
-fold.change.ko_24m_vs_wt_24m <- fold.change.ko_24m_vs_wt_24m[!is.na(names(fold.change.ko_24m_vs_wt_24m))]
-
-# Set all non-repressed genes to 0
+# Prepare the fold-change data for Pathview:
+#    Make a copy of the original fold-change vector
 fold.change.ko_24m_vs_wt_24m_cleaned <- fold.change.ko_24m_vs_wt_24m
-fold.change.ko_24m_vs_wt_24m_cleaned[!(names(fold.change.ko_24m_vs_wt_24m_cleaned) %in% entrez_ids_repressed_24m)] <- 0
 
-# Run pathview for desired KEGG pathway (e.g., mmu04062)
+# Set to zero all genes NOT in the list of repressed genes
+#    names(...) returns the ENTREZIDs of each element in the vector
+#    Any name not found in entrez_ids_repressed_24m is replaced with 0
+fold.change.ko_24m_vs_wt_24m_cleaned[
+  !(names(fold.change.ko_24m_vs_wt_24m_cleaned) %in% entrez_ids_repressed_24m)
+] <- 0
+
+# Call Pathview to visualize the "mmu04062" KEGG pathway
 pathview(
-  gene.data   = fold.change.ko_24m_vs_wt_24m_cleaned,
-  pathway.id  = "mmu04062",  
-  species     = "mmu",
-  gene.idtype = "ENTREZID",
-  limit       = list(gene = max(abs(fold.change.ko_24m_vs_wt_24m_cleaned)), cpd = 1)
+  gene.data   = fold.change.ko_24m_vs_wt_24m_cleaned,             # log2FC data named by ENTREZID
+  pathway.id  = "mmu04062",                                       # KEGG pathway ID to plot
+  species     = "mmu",                                            # organism: Mus musculus
+  gene.idtype = "ENTREZID",                                       # identifier type in gene.data
+  limit       = list(
+    gene = max(abs(fold.change.ko_24m_vs_wt_24m_cleaned)),        # max range for color scaling
+    cpd  = 1                                                      # compound limit (not applicable here)
+  )
 )
-
-
 
 # ===================================================
 # Get differential expression results for contrast 2
@@ -932,32 +933,45 @@ barplot(ekegg_repressed_ko_24_6,
 # KEGG Pathway Visualization (Repressed genes only)
 # -------------------------
 
-# Ensure fold-change vector has ENTREZID as names
-names(fold.change.ko_24m_vs_ko_6m) <- mapped_all$ENTREZID[
-  match(rownames(ko_24m_vs_ko_6m), mapped_all$PROBEID)
-]
-fold.change.ko_24m_vs_ko_6m <- fold.change.ko_24m_vs_ko_6m[!is.na(names(fold.change.ko_24m_vs_ko_6m))]
+# Convert the enrichKEGG result for the KO 24m vs KO 6m repressed genes into a data frame
+df.ekegg_repressed_ko_24_6 <- as.data.frame(ekegg_repressed_ko_24_6)
 
-# Set all non-repressed genes to 0 (highlight repressed only)
+# Display the first few rows to inspect the enriched KEGG pathways
+head(df.ekegg_repressed_ko_24_6)
+
+# Prepare the fold-change data for Pathview:
+#    Make a copy of the original fold-change vector for the 24m vs 6m KO comparison
 fold.change.ko_24m_vs_ko_6m_cleaned <- fold.change.ko_24m_vs_ko_6m
-fold.change.ko_24m_vs_ko_6m_cleaned[!(names(fold.change.ko_24m_vs_ko_6m_cleaned) %in% entrez_ids_repressed_ko_24m_ko_6m)] <- 0
 
-# Visualize first pathway
+# Set to zero all genes NOT in the list of repressed ENTREZ IDs
+#    names(...) returns the ENTREZIDs for each element in the vector
+#    Any name not found in entrez_ids_repressed_ko_24m_ko_6m is replaced with 0
+fold.change.ko_24m_vs_ko_6m_cleaned[
+  !(names(fold.change.ko_24m_vs_ko_6m_cleaned) %in% entrez_ids_repressed_ko_24m_ko_6m)
+] <- 0
+
+# Visualize the "mmu04721" KEGG pathway 
 pathview(
-  gene.data   = fold.change.ko_24m_vs_ko_6m_cleaned,
-  pathway.id  = "mmu04721",  # Example: Synaptic vesicle cycle
-  species     = "mmu",
-  gene.idtype = "ENTREZID",
-  limit       = list(gene = max(abs(fold.change.ko_24m_vs_ko_6m_cleaned)), cpd = 1)
+  gene.data   = fold.change.ko_24m_vs_ko_6m_cleaned,           # log2FC data named by ENTREZID
+  pathway.id  = "mmu04721",                                    # KEGG pathway ID to plot
+  species     = "mmu",                                         # organism: Mus musculus
+  gene.idtype = "ENTREZID",                                    # identifier type used in gene.data
+  limit       = list(
+    gene = max(abs(fold.change.ko_24m_vs_ko_6m_cleaned)),      # maximum range for color scaling
+    cpd  = 1                                                   # compound limit (not used here)
+  )
 )
 
-# Visualize second pathway
+# Visualize another pathway, "mmu04724" 
 pathview(
-  gene.data   = fold.change.ko_24m_vs_ko_6m_cleaned,
-  pathway.id  = "mmu04724",  # Example: Glutamatergic synapse
-  species     = "mmu",
-  gene.idtype = "ENTREZID",
-  limit       = list(gene = max(abs(fold.change.ko_24m_vs_ko_6m_cleaned)), cpd = 1)
+  gene.data   = fold.change.ko_24m_vs_ko_6m_cleaned,           # reuse the same filtered data
+  pathway.id  = "mmu04724",                                    # another KEGG pathway ID
+  species     = "mmu",                                         # Mus musculus
+  gene.idtype = "ENTREZID",                                    # ENTREZID identifiers
+  limit       = list(
+    gene = max(abs(fold.change.ko_24m_vs_ko_6m_cleaned)),      # same color scale limit
+    cpd  = 1                                                   # compound limit
+  )
 )
 
 
@@ -1129,23 +1143,35 @@ mapped_all <- AnnotationDbi::select(clariomsmousetranscriptcluster.db,
                                     columns = "ENTREZID",
                                     keytype = "PROBEID")
 
-# Rename fold change vector with ENTREZIDs
-names(fold.change.wt_24m_vs_wt_6m) <- mapped_all$ENTREZID[match(rownames(wt_24m_vs_wt_6m), mapped_all$PROBEID)]
 
-# Remove NA names
-fold.change.wt_24m_vs_wt_6m <- fold.change.wt_24m_vs_wt_6m[!is.na(names(fold.change.wt_24m_vs_wt_6m))]
 
-# Create cleaned vector: set non-repressed genes to 0
-fold.change.cleaned <- fold.change.wt_24m_vs_wt_6m
-fold.change.cleaned[!(names(fold.change.cleaned) %in% entrez_ids_repressed)] <- 0
+# Convert the enrichKEGG result for WT 24m vs WT 6m into a data frame
+df.ekegg_repressed_24_6_WT <- as.data.frame(ekegg_repressed)
 
-# Visualize pathway with Pathview
+# Display the first few rows to inspect enriched pathways
+head(df.ekegg_repressed_24_6_WT)
+
+# Prepare the fold-change data for Pathview:
+# Create a copy of the original WT 24m vs WT 6m fold-change vector
+fold.change.wt_24m_vs_wt_6m_cleaned <- fold.change.wt_24m_vs_wt_6m
+
+# Zero out all genes NOT present in the list of differentially expressed ENTREZ IDs
+#    names(...) returns the ENTREZIDs for each element in the vector
+#    Any name not found in entrez_ids_wt_24m_vs_wt_6m is set to 0
+fold.change.wt_24m_vs_wt_6m_cleaned[
+  !(names(fold.change.wt_24m_vs_wt_6m_cleaned) %in% entrez_ids_wt_24m_vs_wt_6m)
+] <- 0
+
+# Visualize the KEGG pathway with ID "mmu04020" (e.g., Calcium signaling pathway)
 pathview(
-  gene.data   = fold.change.cleaned,
-  pathway.id  = "mmu04020",  # Change to your pathway of interest
-  species     = "mmu",
-  gene.idtype = "ENTREZID",
-  limit       = list(gene = max(abs(fold.change.cleaned)), cpd = 1)
+  gene.data   = fold.change.wt_24m_vs_wt_6m_cleaned,           # fold-change data named by ENTREZID
+  pathway.id  = "mmu04020",                                    # KEGG pathway ID to visualize
+  species     = "mmu",                                         # organism: Mus musculus
+  gene.idtype = "ENTREZID",                                    # identifier type in gene.data
+  limit       = list(
+    gene = max(abs(fold.change.wt_24m_vs_wt_6m_cleaned)),      # color scaling range based on absolute max
+    cpd  = 1                                                   # compound limit (not used here)
+  )
 )
 
 ## Translation of genes
@@ -1235,7 +1261,7 @@ names_ko_24m_wt_24m_repressed <- AnnotationDbi::select(clariomsmousetranscriptcl
 ## Merge and Annotate
 
 # Combine all contrasts into one table and add labels for contrast and regulation status
-complete_table <- bind_rows(
+complet_table <- bind_rows(
   names_ko_6m_wt_6m_activated %>% mutate(Contrast = "KO6m_vs_WT6m", Status = "Activated"),
   names_ko_6m_wt_6m_repressed %>% mutate(Contrast = "KO6m_vs_WT6m", Status = "Repressed"),
   
@@ -1248,23 +1274,23 @@ complete_table <- bind_rows(
   names_ko_24m_wt_24m_activated %>% mutate(Contrast = "KO24m_vs_WT24m", Status = "Activated"),
   names_ko_24m_wt_24m_repressed %>% mutate(Contrast = "KO24m_vs_WT24m", Status = "Repressed")
 ) %>%
-  select(Contraste, Estado, PROBEID, SYMBOL)
+  select(Contrast, Status, PROBEID, SYMBOL)
 
 # Sort the table by contrast and regulation state
-complete_table <- complete_table %>%
+complet_table <- complet_table %>%
   arrange(Contrast, Status, SYMBOL)
 
 
 ## Render HTML Table
 
 # Format the table using kable and style it for HTML export
-table_html <- kable(complete_table, format = "html", escape = FALSE,
+html_table <- kable(complet_table, format = "html", escape = FALSE,
                     caption = "Activated and repressed genes with their symbols by contrast") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
                 full_width = FALSE, position = "left", font_size = 12)
 
 # Save the table as an HTML file
-save_kable(table_html, file = "contrasts_genes.html")
+save_kable(html_table, file = "contrasts_genes.html")
 
 # Display the styled table in the viewer
-table_html
+html_table
