@@ -22,6 +22,8 @@ library(clusterProfiler)              # Functional enrichment (GO, KEGG, etc.)
 library(org.Mm.eg.db)                 # Annotation for Mus musculus (mouse)
 library(pathview)                     # KEGG pathway visualization
 library(kableExtra)                   # Enhanced HTML tables for reporting
+library(ggpubr)                       # Publication-ready ggplot2 plots with easy statistical annotations and multi‐plot layouts
+library(ggrepel)                      # Improved text labels for ggplot2
 
 # -------------------------------
 # Load CEL files for each group
@@ -118,16 +120,23 @@ y_min <- min(filtered_expression[,"ko2_24m"], na.rm = TRUE)
 y_max <- max(filtered_expression[,"ko2_24m"], na.rm = TRUE)
 
 # Scatter plot between two biological replicates
-plot(filtered_expression[,"ko1_24m"],
-     filtered_expression[,"ko2_24m"],
-     pch = 19,
-     col = "grey",
-     cex = 0.5,
-     xlab = "KO 24m - Replicate 1",
-     ylab = "KO 24m - Replicate 2",
-     xlim = c(x_min, x_max),
-     ylim = c(y_min, y_max))
-     
+ggplot(filtered_expression, aes(x = ko1_24m, y = ko2_24m)) +
+  geom_point(color = "grey", size = 0.5) +                      # puntos
+  geom_smooth(method = "lm", se = FALSE, color = "red") +       # línea de regresión
+  xlim(x_min, x_max) +                                          # límites eje X
+  ylim(y_min, y_max) +                                          # límites eje Y
+  stat_cor(                                                     # añade r de Pearson
+    aes(label = ..r.label..),
+    method  = "pearson",
+    label.x = x_min,
+    label.y = y_max
+  ) +
+  labs(
+    x = "KO 24m - Réplica 1",
+    y = "KO 24m - Réplica 2",
+    title = "Correlación entre réplicas KO a 24 meses"
+  ) +
+  theme_minimal()
 
 # ==============================
 # Principal Component Analysis (PCA)
@@ -307,18 +316,75 @@ ko_6m_vs_wt_6m$Significance <- "NS"  # Not Significant
 ko_6m_vs_wt_6m$Significance[ko_6m_vs_wt_6m$logFC > 1.5 & ko_6m_vs_wt_6m$P.Value < 0.05] <- "Up"
 ko_6m_vs_wt_6m$Significance[ko_6m_vs_wt_6m$logFC < -1.5 & ko_6m_vs_wt_6m$P.Value < 0.05] <- "Down"
 
-# Volcano plot
-ggplot(ko_6m_vs_wt_6m, aes(x = logFC, y = negLogP, color = Significance)) +
-  geom_point(alpha = 0.6, size = 1.5) +
-  scale_color_manual(values = c("Up" = "red", "Down" = "blue", "NS" = "gray")) +
-  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed", color = "black") +
-  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
+################################## Volcano plot ##############################################
+
+# Add PROBEID and ENTREZID to the differential expression table
+de_df <- ko_6m_vs_wt_6m %>%
+  tibble::rownames_to_column("PROBEID") %>%        # Turn row names into a PROBEID column
+  inner_join(
+    universe_clean %>% select(PROBEID, ENTREZID),
+    by = "PROBEID"                                 # Keep only probes present in the universe
+  )
+
+# Select top 5 up- and top 5 down-regulated genes by logFC
+top_up <- de_df %>%
+  filter(Significance == "Up") %>%                 # Only up-regulated genes
+  arrange(desc(logFC)) %>%                         # Sort by descending log fold-change
+  slice_head(n = 5)                                # Take the top 5
+
+top_down <- de_df %>%
+  filter(Significance == "Down") %>%               # Only down-regulated genes
+  arrange(logFC) %>%                               # Sort by ascending log fold-change
+  slice_head(n = 5)                                # Take the top 5
+
+top10 <- bind_rows(top_up, top_down)               # Combine the 10 selected genes
+
+# Map ENTREZIDs to gene SYMBOLs for labeling
+symbol_map <- AnnotationDbi::select(
+  org.Mm.eg.db,
+  keys    = top10$ENTREZID,
+  columns = "SYMBOL",
+  keytype = "ENTREZID"
+)
+top10 <- left_join(top10, symbol_map, by = "ENTREZID")
+
+# Create volcano plot highlighting and labeling the top 5 Up and top 5 Down genes
+ggplot(de_df, aes(x = logFC, y = negLogP, color = Significance)) +
+  geom_point(alpha = 0.6, size = 1.5) +                          # Plot all data points
+  scale_color_manual(
+    values = c("Up" = "red",                                    # Custom color for up-regulated
+               "Down" = "blue",                                 # Custom color for down-regulated
+               "NS" = "gray")                                   # Custom color for non-significant
+  ) +
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed") +  # Add vertical lines at fold‐change cutoffs
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +  # Add horizontal line at p-value cutoff
+  geom_text_repel(
+    data          = top10,                                      # Only label the selected top genes
+    aes(label     = SYMBOL),                                    # Use gene SYMBOL for labels
+    show.legend   = FALSE,
+    size          = 5,                                          # Increase text size
+    fontface      = "bold",                                     # Bold font
+    box.padding   = 0.8,                                        # Space around text boxes
+    point.padding = 0.5,                                        # Minimum distance from points
+    nudge_y       = 1,                                          # Nudge labels upward
+    direction     = "both",                                     # Allow movement in x and y directions
+    force         = 1.5,                                        # Repulsion force between labels
+    max.overlaps  = Inf,                                        # Do not drop any labels
+    segment.size  = 0.3,                                        # Thickness of connector lines
+    segment.color = "black"                                     # Color of connector lines
+  ) +
+  scale_x_continuous(expand = expansion(add = c(0.3, 0.3))) +    # Add padding on x-axis so labels aren’t cut off
+  scale_y_continuous(expand = expansion(add = c(0.8, 1))) +      # Add padding on y-axis so labels aren’t cut off
+  coord_cartesian(clip = "off") +                                # Allow labels to extend beyond plotting area
   theme_minimal() +
+  theme(
+    plot.margin = unit(c(1, 3, 1, 1), "lines")                  # Extra margin to accommodate labels
+  ) +
   labs(
-    title = "Volcano Plot: KO 6m vs WT 6m",
-    x = "log2 Fold Change",
-    y = "-log10(p-value)",
-    color = "Regulation"
+    title = "Volcano Plot: KO 6m vs WT 6m",                     # Plot title
+    x     = "log2 Fold Change",                                 # X-axis label
+    y     = "-log10(p-value)",                                  # Y-axis label
+    color = "Regulation"                                        # Legend title
   )
 
 ## Gene and pathway enrichment analysis for KO 6m vs WT 6m
@@ -499,18 +565,72 @@ ko_24m_vs_wt_24m$Significance <- "NS"
 ko_24m_vs_wt_24m$Significance[ko_24m_vs_wt_24m$logFC > 1.5 & ko_24m_vs_wt_24m$P.Value < 0.05] <- "Up"
 ko_24m_vs_wt_24m$Significance[ko_24m_vs_wt_24m$logFC < -1.5 & ko_24m_vs_wt_24m$P.Value < 0.05] <- "Down"
 
-# Volcano plot
-ggplot(ko_24m_vs_wt_24m, aes(x = logFC, y = negLogP, color = Significance)) +
-  geom_point(alpha = 0.6, size = 1.5) +
-  scale_color_manual(values = c("Up" = "red", "Down" = "blue", "NS" = "gray")) +
-  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed", color = "black") +
-  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
+######################################## Volcano plot####################################################
+# Convert row names to a PROBEID column and left‐join to get ENTREZIDs
+de24m_df <- ko_24m_vs_wt_24m %>%
+  tibble::rownames_to_column("PROBEID") %>%            # row names → PROBEID
+  left_join(
+    universe_clean %>% select(PROBEID, ENTREZID),     # keep all DE probes
+    by = "PROBEID"
+  )
+
+# Select top 5 up-regulated and top 5 down-regulated genes (with valid ENTREZID)
+top_up24m <- de24m_df %>%
+  filter(Significance == "Up", !is.na(ENTREZID)) %>%   # only Up with ENTREZID
+  arrange(desc(logFC)) %>%                             # highest logFC first
+  slice_head(n = 5)                                    # take top 5
+
+top_down24m <- de24m_df %>%
+  filter(Significance == "Down", !is.na(ENTREZID)) %>% # only Down with ENTREZID
+  arrange(logFC) %>%                                   # most negative logFC first
+  slice_head(n = 5)                                    # take top 5
+
+top10_24m <- bind_rows(top_up24m, top_down24m)         # combine for labeling
+
+# Map ENTREZID to gene SYMBOL for nicer labels
+symbol_map24m <- AnnotationDbi::select(
+  org.Mm.eg.db,
+  keys    = top10_24m$ENTREZID,
+  columns = "SYMBOL",
+  keytype = "ENTREZID"
+)
+top10_24m <- left_join(top10_24m, symbol_map24m, by = "ENTREZID")
+
+# Build the volcano plot and add labels for the 10 genes
+ggplot(de24m_df, aes(x = logFC, y = negLogP, color = Significance)) +
+  geom_point(alpha = 0.6, size = 1.5) +                              # Plot all points
+  scale_color_manual(values = c("Up"   = "red",                     # Custom color for up-regulated
+                                "Down" = "blue",                    # Custom color for down-regulated
+                                "NS"   = "gray")) +                # Custom color for non-significant
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed") +      # Add vertical lines at FC cutoffs
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +      # Add horizontal line at p-value cutoff
+  geom_text_repel(
+    data          = top10_24m,                                      # Only label the selected top genes
+    aes(label     = SYMBOL),                                        # Use gene SYMBOL as label
+    show.legend   = FALSE,
+    size          = 5,                                              # Increase text size
+    fontface      = "bold",                                         # Bold font for emphasis
+    box.padding   = 0.8,                                            # Padding around text box
+    point.padding = 0.5,                                            # Minimum distance from point
+    nudge_y       = 1,                                              # Nudge labels upward
+    direction     = "both",                                         # Allow movement in x and y directions
+    force         = 1.5,                                            # Repulsion force between labels
+    max.overlaps  = Inf,                                            # Do not drop any labels
+    segment.size  = 0.3,                                            # Thickness of connector lines
+    segment.color = "black"                                         # Color of connector lines
+  ) +
+  scale_x_continuous(expand = expansion(add = c(0.3, 0.3))) +        # Add padding on x-axis
+  scale_y_continuous(expand = expansion(add = c(0.8, 1))) +         # Add padding on y-axis
+  coord_cartesian(clip = "off") +                                   # Allow labels outside plot area
   theme_minimal() +
+  theme(
+    plot.margin = unit(c(1, 3, 1, 1), "lines")                     # Extra margin for labels
+  ) +
   labs(
-    title = "Volcano Plot: KO 24m vs WT 24m",
-    x = "log2 Fold Change",
-    y = "-log10(p-value)",
-    color = "Regulation"
+    title = "Volcano Plot: KO 24m vs WT 24m",# Plot title
+    x     = "log2 Fold Change",                                     # X-axis label
+    y     = "-log10(p-value)",                                      # Y-axis label
+    color = "Regulation"                                            # Legend title
   )
 
 ## Functional enrichment: KO 24m vs WT 24m
@@ -724,17 +844,72 @@ ko_24m_vs_ko_6m$Significance[ko_24m_vs_ko_6m$logFC > 1.5 & ko_24m_vs_ko_6m$P.Val
 ko_24m_vs_ko_6m$Significance[ko_24m_vs_ko_6m$logFC < -1.5 & ko_24m_vs_ko_6m$P.Value < 0.05] <- "Down"
 
 # Volcano plot using ggplot2
-ggplot(ko_24m_vs_ko_6m, aes(x = logFC, y = negLogP, color = Significance)) +
-  geom_point(alpha = 0.6, size = 1.5) +
-  scale_color_manual(values = c("Up" = "red", "Down" = "blue", "NS" = "gray")) +
-  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed", color = "black") +
-  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
-  theme_minimal() +
-  labs(title = "Volcano plot: KO 24m vs KO 6m",
-       x = "log2 Fold Change",
-       y = "-log10(p-value)",
-       color = "Regulation")
+# Annotate the DE results with PROBEID → ENTREZID (keeping all DE probes)
+de_24v6_df <- ko_24m_vs_ko_6m %>%
+  tibble::rownames_to_column("PROBEID") %>%           # convert rownames to PROBEID
+  left_join(
+    universe_clean %>% select(PROBEID, ENTREZID),    # add ENTREZID where available
+    by = "PROBEID"
+  )
 
+# Pick the top 5 most up-regulated and top 5 most down-regulated genes
+top_up_24v6 <- de_24v6_df %>%
+  filter(Significance == "Up", !is.na(ENTREZID)) %>%  # only true Ups with ENTREZID
+  arrange(desc(logFC)) %>%                            # highest logFC first
+  slice_head(n = 5)                                   # take top 5
+
+top_down_24v6 <- de_24v6_df %>%
+  filter(Significance == "Down", !is.na(ENTREZID)) %>%# only true Downs with ENTREZID
+  arrange(logFC) %>%                                  # most negative logFC first
+  slice_head(n = 5)                                   # take top 5
+
+top10_24v6 <- bind_rows(top_up_24v6, top_down_24v6)  # combine for labeling
+
+# Map those ENTREZIDs to gene SYMBOLs for nicer labels
+symbol_map_24v6 <- AnnotationDbi::select(
+  org.Mm.eg.db,
+  keys    = top10_24v6$ENTREZID,
+  columns = "SYMBOL",
+  keytype = "ENTREZID"
+)
+top10_24v6 <- left_join(top10_24v6, symbol_map_24v6, by = "ENTREZID")
+
+# Build the volcano plot, highlighting and labeling the top 10 genes
+ggplot(de_24v6_df, aes(x = logFC, y = negLogP, color = Significance)) +
+  geom_point(alpha = 0.6, size = 1.5) +                         # plot all points
+  scale_color_manual(
+    values = c("Up" = "red", "Down" = "blue", "NS" = "gray")    # custom colors
+  ) +
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed") +  # FC cutoffs
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +  # p-value cutoff
+  geom_text_repel(
+    data          = top10_24v6,                                 # label only top 10
+    aes(label     = SYMBOL),                                    # use gene SYMBOL
+    show.legend   = FALSE,                                      # exclude labels from legend
+    size          = 5,                                          # larger text
+    fontface      = "bold",                                     # bold font
+    box.padding   = 0.8,                                        # padding around text
+    point.padding = 0.5,                                        # min distance from points
+    nudge_y       = 1,                                          # nudge labels upward
+    direction     = "both",                                     # allow x & y adjustment
+    force         = 1.5,                                        # stronger repulsion
+    max.overlaps  = Inf,                                        # do not drop any labels
+    segment.size  = 0.3,                                        # connector line width
+    segment.color = "black"                                     # connector line color
+  ) +
+  scale_x_continuous(expand = expansion(add = c(0.3, 0.3))) +    # horizontal padding
+  scale_y_continuous(expand = expansion(add = c(0.8, 1))) +      # vertical padding
+  coord_cartesian(clip = "off") +                                # allow labels outside panel
+  theme_minimal() +
+  theme(
+    plot.margin = unit(c(1, 3, 1, 1), "lines")                  # extra margin for labels
+  ) +
+  labs(
+    title = "Volcano Plot: KO 24m vs KO 6m", 
+    x     = "log2 Fold Change",
+    y     = "-log10(p-value)",
+    color = "Regulation"
+  )
 ## Gene and pathway enrichment: KO 24m vs KO 6m
 
 # Full results sorted by logFC
@@ -993,16 +1168,72 @@ wt_24m_vs_wt_6m$Significance[wt_24m_vs_wt_6m$logFC > 1.5 & wt_24m_vs_wt_6m$P.Val
 wt_24m_vs_wt_6m$Significance[wt_24m_vs_wt_6m$logFC < -1.5 & wt_24m_vs_wt_6m$P.Value < 0.05] <- "Down"
 
 # Volcano plot using ggplot2
-ggplot(wt_24m_vs_wt_6m, aes(x = logFC, y = negLogP, color = Significance)) +
-  geom_point(alpha = 0.6, size = 1.5) +
-  scale_color_manual(values = c("Up" = "red", "Down" = "blue", "NS" = "gray")) +
-  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed", color = "black") +
-  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
+# Convert row names to PROBEID and join to get ENTREZID (keeping all DE probes)
+de_wt_df <- wt_24m_vs_wt_6m %>%
+  tibble::rownames_to_column("PROBEID") %>%
+  left_join(
+    universe_clean %>% select(PROBEID, ENTREZID),
+    by = "PROBEID"
+  )
+
+# Select top 5 up- and top 5 down-regulated genes (with valid ENTREZID)
+top_up_wt <- de_wt_df %>%
+  filter(Significance == "Up", !is.na(ENTREZID)) %>%
+  arrange(desc(logFC)) %>%
+  slice_head(n = 5)
+
+top_down_wt <- de_wt_df %>%
+  filter(Significance == "Down", !is.na(ENTREZID)) %>%
+  arrange(logFC) %>%
+  slice_head(n = 5)
+
+top10_wt <- bind_rows(top_up_wt, top_down_wt)
+
+# Map ENTREZIDs to SYMBOLs for labeling
+symbol_map_wt <- AnnotationDbi::select(
+  org.Mm.eg.db,
+  keys    = top10_wt$ENTREZID,
+  columns = "SYMBOL",
+  keytype = "ENTREZID"
+)
+top10_wt <- left_join(top10_wt, symbol_map_wt, by = "ENTREZID")
+
+# Build the volcano plot with highlighted and labeled genes
+ggplot(de_wt_df, aes(x = logFC, y = negLogP, color = Significance)) +
+  geom_point(alpha = 0.6, size = 1.5) +                         # plot all points
+  scale_color_manual(
+    values = c("Up"   = "red",
+               "Down" = "blue",
+               "NS"   = "gray")
+  ) +
+  geom_vline(xintercept = c(-1.5, 1.5), linetype = "dashed") +  # fold-change cutoffs
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +  # p-value cutoff
+  geom_text_repel(
+    data          = top10_wt,                                   # only label top genes
+    aes(label     = SYMBOL),
+    show.legend   = FALSE,                                      # exclude text from legend
+    size          = 5,                                          # larger text
+    fontface      = "bold",                                     # bold font
+    box.padding   = 0.8,                                        # padding around text
+    point.padding = 0.5,                                        # min distance from points
+    nudge_y       = 1,                                          # nudge labels upward
+    direction     = "both",                                     # allow x & y adjustment
+    force         = 1.5,                                        # stronger repulsion
+    max.overlaps  = Inf,                                        # do not drop any
+    segment.size  = 0.3,                                        # connector line width
+    segment.color = "black"                                     # connector line color
+  ) +
+  scale_x_continuous(expand = expansion(add = c(0.3, 0.3))) +    # horizontal padding
+  scale_y_continuous(expand = expansion(add = c(0.8, 1))) +      # vertical padding
+  coord_cartesian(clip = "off") +                                # allow labels outside panel
   theme_minimal() +
+  theme(
+    plot.margin = unit(c(1, 3, 1, 1), "lines")                  # extra margin for labels
+  ) +
   labs(
     title = "Volcano Plot: WT 24m vs WT 6m",
-    x = "log2 Fold Change",
-    y = "-log10(p-value)",
+    x     = "log2 Fold Change",
+    y     = "-log10(p-value)",
     color = "Regulation"
   )
 
@@ -1159,7 +1390,7 @@ fold.change.wt_24m_vs_wt_6m_cleaned <- fold.change.wt_24m_vs_wt_6m
 #    names(...) returns the ENTREZIDs for each element in the vector
 #    Any name not found in entrez_ids_wt_24m_vs_wt_6m is set to 0
 fold.change.wt_24m_vs_wt_6m_cleaned[
-  !(names(fold.change.wt_24m_vs_wt_6m_cleaned) %in% entrez_ids_wt_24m_vs_wt_6m)
+  !(names(fold.change.wt_24m_vs_wt_6m_cleaned) %in% entrez_ids_repressed)
 ] <- 0
 
 # Visualize the KEGG pathway with ID "mmu04020" (e.g., Calcium signaling pathway)

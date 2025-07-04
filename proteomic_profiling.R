@@ -104,18 +104,19 @@ kegg_exc <- run_kegg(ids_exclusive,  "Proteins exclusive to WT24")
 # Create barplots for all GO results
 plot_go <- function(ego, ttl) barplot(ego, showCategory = 15) + ggtitle(ttl)
 
-plot_go(ego_list$gan_BP, "WT24m vs WT6m – Gained – BP")
-plot_go(ego_list$gan_MF, "WT24m vs WT6m – Gained – MF")
-plot_go(ego_list$gan_CC, "WT24m vs WT6m – Gained – CC")
-plot_go(ego_list$per_BP, "WT6m vs WT24m – Lost – BP")
-plot_go(ego_list$per_MF, "WT6m vs WT24m – Lost – MF")
-plot_go(ego_list$per_CC, "WT6m vs WT24m – Lost – CC")
-plot_go(ego_list$rec_BP, "KO24 vs WT24m – Recovered – BP")
-plot_go(ego_list$rec_MF, "KO24 vs WT24m – Recovered – MF")
-plot_go(ego_list$rec_CC, "KO24 vs WT24m – Recovered – CC")
-plot_go(ego_list$exc_BP, "WT24 vs KO24m – Exclusive – BP")
-plot_go(ego_list$exc_MF, "WT24 vs KO24m – Exclusive – MF")
-plot_go(ego_list$exc_CC, "WT24 vs KO24m – Exclusive – CC")
+plot_go(ego_list$gan_BP, "Exclusively in WT24m vs WT6m – BP")
+plot_go(ego_list$gan_MF, "Exclusively in WT24m vs WT6m – MF")
+plot_go(ego_list$gan_CC, "Exclusively in WT24m vs WT6m – CC")
+plot_go(ego_list$per_BP, "Exclusively in WT6m vs WT24m – BP")
+plot_go(ego_list$per_MF, "Exclusively in WT6m vs WT24m – MF")
+plot_go(ego_list$per_CC, "Exclusively in WT6m vs WT24m – CC")
+plot_go(ego_list$rec_BP, "Exclusively in KO24m vs WT24m – BP")
+plot_go(ego_list$rec_MF, "Exclusively in KO24m vs WT24m – MF")
+plot_go(ego_list$rec_CC, "Exclusively in KO24m vs WT24m – CC")
+plot_go(ego_list$exc_BP, "Exclusively in WT24m vs KO24m – BP")
+plot_go(ego_list$exc_MF, "Exclusively in WT24m vs KO24m – Exclusive – MF")
+plot_go(ego_list$exc_CC, "Exclusively in WT24m vs KO24m – Exclusive – CC")
+
 
 ## --------------------------- 8. VENN DIAGRAMS -------------------------- ##
 # Venn: aging comparison (WT)
@@ -185,3 +186,4 @@ save_kable(html_tbl, "proteins_presence_absence_preview.html")
 
 # 5) Confirmation message
 cat("Table generated: proteins_presence_absence.csv\n")
+
